@@ -79,7 +79,7 @@
           rev.resourceRoyalties = V.clampNonNegative(resourceRoyalty);
 
           // 9. State-Owned Enterprise (SOE) Dividends
-          rev.soeDividends = V.clampNonNegative(Math.round(monthlyGdp * 0.005));
+          rev.soeDividends = V.clampNonNegative(Math.round(monthlyGdp * 0.005)) + (country.stateEnterpriseDividends || 0);
 
           // 10. Miscellaneous Fees & Administrative Revenue
           rev.other = V.clampNonNegative(Math.round(monthlyGdp * 0.004));

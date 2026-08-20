@@ -106,10 +106,10 @@ function assert(condition, label) {
     { type: 'BUYBACK_BONDS', payload: { bondId: st.countries[POL].debt.bonds?.[0]?.id, amount: 100000000 } },
     { type: 'SET_CENTRAL_BANK_RATE', payload: { rate: 3.75 } },
     { type: 'SET_RESERVE_REQUIREMENT', payload: { requirement: 4.0 } },
-    { type: 'BUILD_FACTORY', payload: { factoryTypeId: 'factory_steel_mill', customName: 'Test Huta' } },
+    { type: 'BUILD_FACTORY', payload: { factoryTypeId: 'factory_steel_mill', customName: 'Test Huta', ownership: 'STATE' } },
     { type: 'EXPAND_FACTORY', payload: { factoryId: st.countries[POL].factories?.[0]?.id } },
     { type: 'TRANSFER_FUNDS', payload: { targetCountryId: 'DEU', amount: 1000000 } },
-    { type: 'OFFER_STATE_LOAN', payload: { borrowerId: 'UKR', amount: 500000000, ratePercent: 4.5, durationMonths: 24 } },
+    { type: 'OFFER_STATE_LOAN', payload: { borrowerId: 'UKR', principal: 500000000, interestRate: 4.5, durationMonths: 24 } },
     { type: 'START_RESEARCH', payload: { techId: WF.Data.Technologies?.[0]?.id } },
     { type: 'START_PROJECT', payload: { projectId: WF.Data.Projects?.[0]?.id } },
     { type: 'EXECUTE_TRADE', payload: { resourceId: 'steel', action: 'SELL', amount: 1 } },
@@ -201,6 +201,18 @@ function assert(condition, label) {
   assert(saveSize < 3500000, `Rozmiar zapisu po 60 turach: ${(saveSize / 1048576).toFixed(2)} MB (< 3.5 MB, mieści się w localStorage)`);
   const loadOk = WF.Core.SaveSystem.loadGame('slot1');
   assert(loadOk !== false && loadOk !== null && loadOk !== undefined, 'Wczytanie zapisu działa');
+
+  console.log('\n--- 10. Zarabianie: dywidendy z państwowych fabryk ---');
+  const stG = WF.Core.GameState.getState();
+  const cG = stG.countries[POL];
+  const testFactory = (cG.factories || []).find(f => f.name === 'Test Huta');
+  assert(!!testFactory, 'Fabryka z baterii komend istnieje');
+  if (testFactory) {
+    assert(testFactory.status === 'ACTIVE', `Fabryka ukończona po 60 turach (status: ${testFactory.status})`);
+    assert((testFactory.lastMonthlyProfit || 0) > 1000000, `Dywidenda państwowa wpływa co miesiąc (${WF.Format.money(testFactory.lastMonthlyProfit || 0, 'USD')}/m-c)`);
+    assert((cG.stateEnterpriseDividends || 0) > 0, `Suma dywidend sektora państwowego: ${WF.Format.money(cG.stateEnterpriseDividends || 0, 'USD')}/m-c`);
+    assert((cG.budget.revenues.soeDividends || 0) > (cG.budget.revenues.soeDividends || 0) - (cG.stateEnterpriseDividends || 0), 'Dywidendy ujęte w przychodach budżetu (soeDividends)');
+  }
 
   console.log('\n====================================================');
   console.log(`🏁 [UI Smoke] Wynik: ${checks - failures}/${checks} sprawdzeń zaliczonych, failów: ${failures}`);

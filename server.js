@@ -676,28 +676,21 @@ function handleClientDisconnect(ws) {
   }, DISCONNECT_GRACE_PERIOD_MS);
 }
 
-// Multi-port startup with automatic fallback
+// Multi-port startup with automatic fallback.
+// Zwraca "handle" delegujący do faktycznie nasłuchującego serwera — dzięki temu
+// `listening`/`address()`/`close()` działają poprawnie również wtedy, gdy
+// kolejne porty były zajęte i serwer musiał przełączyć się na kolejny.
 function startServer(portIndex = 0) {
   if (portIndex >= DEFAULT_PORTS.length) {
     console.error('❌ [BŁĄD] Nie udało się powiązać z żadnym standardowym portem (8080, 3000, 8000, 5000, 8888).');
     process.exit(1);
-    return;
+    return null;
   }
 
-  const tryPort = DEFAULT_PORTS[portIndex];
-  const appServer = createHttpServer();
+  let activeServer = null;
+  const pendingListeners = {}; // eventName -> [fn]
 
-  appServer.on('error', (err) => {
-    if (err.code === 'EACCES' || err.code === 'EADDRINUSE') {
-      console.warn(`⚠️ Port ${tryPort} jest zablokowany (${err.code}). Przełączam na kolejny port...`);
-      appServer.close();
-      startServer(portIndex + 1);
-    } else {
-      console.error('Błąd serwera:', err);
-    }
-  });
-
-  appServer.listen(tryPort, '0.0.0.0', () => {
+  const startListening = (appServer, tryPort) => {
     const wss = new WebSocketServer({ server: appServer });
 
     // Periodic Heartbeat Ping/Pong
@@ -751,9 +744,58 @@ function startServer(portIndex = 0) {
     console.log(`☁️  Udostępnij koledze przez Cloudflare Tunnel:`);
     console.log(`   npx cloudflared tunnel --url http://localhost:${tryPort}`);
     console.log(`=======================================================`);
-  });
+  };
 
-  return appServer;
+  const attempt = (idx) => {
+    if (idx >= DEFAULT_PORTS.length) {
+      console.error('❌ [BŁĄD] Nie udało się powiązać z żadnym standardowym portem (8080, 3000, 8000, 5000, 8888).');
+      process.exit(1);
+      return;
+    }
+
+    const tryPort = DEFAULT_PORTS[idx];
+    const appServer = createHttpServer();
+
+    appServer.on('error', (err) => {
+      if (err.code === 'EACCES' || err.code === 'EADDRINUSE') {
+        console.warn(`⚠️ Port ${tryPort} jest zablokowany (${err.code}). Przełączam na kolejny port...`);
+        appServer.close();
+        attempt(idx + 1);
+      } else {
+        console.error('Błąd serwera:', err);
+      }
+    });
+
+    appServer.listen(tryPort, '0.0.0.0', () => {
+      activeServer = appServer;
+      startListening(appServer, tryPort);
+      (pendingListeners.listening || []).forEach((fn) => fn());
+    });
+  };
+
+  attempt(portIndex);
+
+  // Delegujący handle zgodny z API net.Server używanym przez testy
+  const handle = {
+    on(event, fn) {
+      if (event === 'listening' && activeServer) fn();
+      else (pendingListeners[event] = pendingListeners[event] || []).push(fn);
+      return handle;
+    },
+    close(cb) {
+      if (activeServer) activeServer.close(cb);
+      else if (typeof cb === 'function') cb();
+      return handle;
+    },
+    address() {
+      return activeServer ? activeServer.address() : null;
+    },
+    get server() {
+      return activeServer;
+    }
+  };
+
+  return handle;
 }
 
 if (require.main === module) {

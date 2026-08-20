@@ -75,8 +75,13 @@
                         ${fac.name} ${fac.level > 1 ? `<span class="wf-badge wf-badge-cyan">Poz. ${fac.level}</span>` : ''}
                       </div>
                       <div style="font-size: 10px; color: var(--text-muted);">
-                        Sektor: <strong class="text-accent">${fac.sector}</strong> • Zdolności: +${fac.capacityBoost} • Pracownicy: ${fac.workersEmployed}
+                        Sektor: <strong class="text-accent">${fac.sector}</strong> • Zdolności: +${fac.capacityBoost} • Pracownicy: ${fac.workersEmployed} • ${fac.ownership === 'PRIVATE' ? '🏭 Prywatny' : '🏛️ Państwowy'}
                       </div>
+                      ${!isBuilding && fac.ownership !== 'PRIVATE' && fac.lastMonthlyProfit > 0 ? `
+                        <div style="font-size: 10px; color: var(--positive); margin-top: 2px;">
+                          💰 Dywidenda: <strong class="font-mono">${F.money(fac.lastMonthlyProfit, 'USD')}/m-c</strong>
+                        </div>
+                      ` : ''}
                       ${isBuilding ? `
                         <div style="font-size: 10px; color: var(--warning); margin-top: 2px;">
                           W budowie (pozostało ${fac.remainingMonths} m-cy)
@@ -86,7 +91,7 @@
                     <div>
                       ${!isBuilding ? `
                         <button class="wf-btn wf-btn-sm wf-btn-secondary btn-upgrade-factory" data-fac-id="${fac.id}">
-                          Modernizuj ($300M)
+                          Modernizuj (${F.money(300000000 * fac.level, 'USD')})
                         </button>
                       ` : ''}
                     </div>
@@ -157,12 +162,24 @@
       const F = window.WorldForge.Format;
 
       const modalHtml = `
-        <div style="display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto;">
+        <div style="display: flex; flex-direction: column; gap: 10px; max-height: 430px; overflow-y: auto;">
           <p style="font-size: 11px; color: var(--text-secondary);">
             Wybierz typ zakładu przemysłowego do budowy w Twoim państwie:
           </p>
 
-          ${factoryTypes.map(ft => `
+          <div style="background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--border-radius-xs); padding: 8px 10px;">
+            <label style="font-size: 11px; font-weight: 600; display: block; margin-bottom: 4px;">Model własności:</label>
+            <select id="factory-ownership-select" class="wf-select" style="width: 100%;">
+              <option value="STATE" selected>🏛️ Państwowy (100% kosztu • miesięczna dywidenda dla Skarbu)</option>
+              <option value="PRIVATE">🏭 Prywatny (55% kosztu • brak dywidendy • szybszy rozwój gospodarczy)</option>
+            </select>
+          </div>
+
+          ${factoryTypes.map(ft => {
+            const resMeta = (window.WorldForge.Data.Resources || []).find(r => r.id === ft.sector);
+            const price = (window.WorldForge.Core.GameState.getState().globalMarket?.prices?.[ft.sector]) || (resMeta ? resMeta.basePrice : 150);
+            const estProfit = Math.round(ft.capacityBoost * 0.785 * price * 1000 * 0.05);
+            return `
             <div style="background: var(--bg-panel-secondary); border: 1px solid var(--border); border-radius: var(--border-radius-xs); padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;">
               <div>
                 <strong style="font-size: 12px; color: var(--text-primary);">${ft.icon} ${ft.name}</strong>
@@ -170,12 +187,15 @@
                 <div style="font-size: 10px; color: var(--text-secondary); margin-top: 2px;">
                   Koszt: <strong class="text-positive">${F.money(ft.cost, 'USD')}</strong> • Czas budowy: <strong>${ft.constructionMonths} m-cy</strong> • Miejsca pracy: <strong>${ft.workersNeeded}</strong>
                 </div>
+                <div style="font-size: 10px; color: var(--accent); margin-top: 2px;">
+                  💰 Szacowana dywidenda państwowa: <strong class="font-mono">${F.money(estProfit, 'USD')}/m-c</strong> (zwrot inwestycji: ~${Math.ceil(ft.cost / Math.max(1, estProfit))} m-cy od oddania)
+                </div>
               </div>
               <button class="wf-btn wf-btn-sm wf-btn-primary btn-submit-build-factory" data-type-id="${ft.id}">
                 Wybuduj
               </button>
             </div>
-          `).join('')}
+          `; }).join('')}
         </div>
       `;
 
@@ -185,13 +205,25 @@
         buttons: [{ text: 'Zamknij', class: 'wf-btn-secondary', autoClose: true }]
       });
 
+      const updateCosts = () => {
+        const ownership = document.getElementById('factory-ownership-select')?.value || 'STATE';
+        document.querySelectorAll('.btn-submit-build-factory').forEach(btn => {
+          const ft = factoryTypes.find(t => t.id === btn.getAttribute('data-type-id'));
+          if (!ft) return;
+          btn.textContent = (ownership === 'PRIVATE') ? `Wybuduj (${F.money(Math.round(ft.cost * 0.55), 'USD')})` : `Wybuduj (${F.money(ft.cost, 'USD')})`;
+        });
+      };
+      document.getElementById('factory-ownership-select')?.addEventListener('change', updateCosts);
+      updateCosts();
+
       document.querySelectorAll('.btn-submit-build-factory').forEach(btn => {
         btn.onclick = () => {
           const typeId = btn.getAttribute('data-type-id');
+          const ownership = document.getElementById('factory-ownership-select')?.value || 'STATE';
           const res = window.WorldForge.Core.Commands.dispatch({
             type: 'BUILD_FACTORY',
             countryId: country.id,
-            payload: { factoryTypeId: typeId }
+            payload: { factoryTypeId: typeId, ownership }
           });
           if (!res.success) {
             window.WorldForge.UI.Modal.showError('Budowa Fabryki Niemożliwa', res.reason);

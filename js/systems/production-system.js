@@ -35,10 +35,16 @@
                     prod[fac.sector].capacity += fac.capacityBoost;
                   }
                   if (countryId === state.playerCountryId) {
+                    const resMeta = resourcesList.find(r => r.id === fac.sector);
+                    const price = (state.globalMarket && state.globalMarket.prices[fac.sector]) || (resMeta ? resMeta.basePrice : 150);
+                    const estProfit = (fac.ownership === 'PRIVATE')
+                      ? null
+                      : Math.round(fac.capacityBoost * (((country.businesses && country.businesses.capacityUtilization) || 78) / 100) * price * 1000 * 0.05);
                     window.WorldForge.Core.GameState.addNotification(
                       'success',
                       'Oddanie Fabryki do Użytku!',
-                      `Zakład przemysłowy "${fac.name}" (${fac.sector}) rozpoczął regularną produkcję! Zdolności wytwórcze wzrosły o +${fac.capacityBoost} jedn.`,
+                      `Zakład przemysłowy "${fac.name}" (${fac.sector}) rozpoczął regularną produkcję! Zdolności wytwórcze wzrosły o +${fac.capacityBoost} jedn.` +
+                      (estProfit ? ` Szacowana dywidenda państwowa: ${window.WorldForge.Format.money(estProfit, 'USD')}/m-c.` : ' (zakład prywatny — brak dywidendy dla skarbu).'),
                       countryId
                     );
                   }
@@ -47,7 +53,30 @@
             }
           }
 
-          // 2. Evaluate input resource bottlenecks and compute output
+          // 2. Dividends from state-owned industrial enterprises
+          // Państwowe zakłady (ownership: 'STATE') odprowadzają miesięczną dywidendę
+          // do Skarbu Państwa: ~5% przychodów brutto po uwzględnieniu wykorzystania
+          // mocy i ceny rynkowej surowca sektora. Prywatne nie płacą dywidendy
+          // (kosztują skarb 45% mniej przy budowie).
+          let stateDividends = 0;
+          if (Array.isArray(country.factories)) {
+            for (const fac of country.factories) {
+              if (fac.status !== 'ACTIVE') { fac.lastMonthlyProfit = 0; continue; }
+              if (fac.ownership === 'PRIVATE') { fac.lastMonthlyProfit = null; continue; }
+
+              const resMeta = resourcesList.find(r => r.id === fac.sector);
+              const price = (state.globalMarket && state.globalMarket.prices[fac.sector]) || (resMeta ? resMeta.basePrice : 150);
+              const utilization = ((country.businesses && country.businesses.capacityUtilization) || 78) / 100;
+              const grossMonthly = fac.capacityBoost * utilization * price * 1000;
+              const dividend = Math.round(grossMonthly * 0.05);
+
+              fac.lastMonthlyProfit = dividend;
+              stateDividends += dividend;
+            }
+          }
+          country.stateEnterpriseDividends = stateDividends;
+
+          // 3. Evaluate input resource bottlenecks and compute output
           for (const resMeta of resourcesList) {
             const item = prod[resMeta.id];
             if (!item) continue;

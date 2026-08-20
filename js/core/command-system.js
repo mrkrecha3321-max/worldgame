@@ -294,7 +294,11 @@
           return { success: false, reason: 'Nie odnaleziono typu fabryki' };
         }
 
-        const cost = typeMeta.cost;
+        // Model własności: państwowy (pełny koszt, miesięczna dywidenda dla skarbu)
+        // lub prywatny (55% kosztu — resztę współfinansuje sektor prywatny,
+        // ale zakład nie odprowadza dywidendy do Skarbu Państwa).
+        const ownership = (payload.ownership === 'PRIVATE') ? 'PRIVATE' : 'STATE';
+        const cost = (ownership === 'PRIVATE') ? Math.round(typeMeta.cost * 0.55) : typeMeta.cost;
         if (country.treasury < cost) {
           return { success: false, reason: `Niewystarczające środki w Skarbie Państwa (wymagane ${F.money(cost, 'USD')})` };
         }
@@ -313,7 +317,7 @@
           status: 'BUILDING',
           remainingMonths: typeMeta.constructionMonths,
           totalConstructionMonths: typeMeta.constructionMonths,
-          ownership: payload.ownership || 'STATE', // 'STATE' or 'PRIVATE'
+          ownership: ownership, // 'STATE' (dywidenda) or 'PRIVATE' (taniej, bez dywidendy)
           startedTurn: turn
         };
 
