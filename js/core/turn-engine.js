@@ -151,6 +151,12 @@
           window.WorldForge.Systems.Trade.processMonthly(state, turnNumber);
         }
 
+        // 8b. Global Exchange Markets (notowania surowców/kruszców i akcji,
+        // regresja do wartości fundamentalnej, dywidendy akcyjne)
+        if (window.WorldForge.Systems.Exchange) {
+          window.WorldForge.Systems.Exchange.processMonthly(state, turnNumber);
+        }
+
         // 9. Taxes and Fiscal Collections
         if (window.WorldForge.Systems.Tax) {
           window.WorldForge.Systems.Tax.processMonthly(state, turnNumber);

@@ -76,6 +76,8 @@
         }
 
         window.WorldForge.Core.GameState.state = parsed.state;
+        // Migracja starych zapisów: rynek giełdowy musi istnieć w stanie gry
+        window.WorldForge.Core.GameState.ensureExchangeMarket();
         window.WorldForge.Core.GameState.notifySubscribers('gameLoaded', parsed.state);
         return true;
       } catch (err) {

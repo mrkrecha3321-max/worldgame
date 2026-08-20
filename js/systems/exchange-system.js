@@ -10,12 +10,26 @@
 
   const ExchangeSystem = {
     /**
+     * Rynek giełdowy żyje w stanie gry (state.exchange), nie w statycznych danych.
+     * Dzięki temu ceny zapisują się w save'ach, synchronizują w multiplayerze
+     * i resetują przy nowej grze.
+     */
+    getMarket(state) {
+      if (state && state.exchange && Array.isArray(state.exchange.commodities)) return state.exchange;
+      const gs = window.WorldForge.Core.GameState;
+      if (gs && typeof gs.ensureExchangeMarket === 'function') {
+        return gs.ensureExchangeMarket();
+      }
+      return window.WorldForge.Data.Exchange;
+    },
+
+    /**
      * Buy Gold or Commodity on Exchange
      */
     buyCommodity(country, commodityId, amount) {
       const V = window.WorldForge.Core.Validators;
       const F = window.WorldForge.Format;
-      const commList = window.WorldForge.Data.Exchange.commodities;
+      const commList = this.getMarket(window.WorldForge.Core.GameState.getState()).commodities;
       const item = commList.find(c => c.id === commodityId);
       if (!item) return { success: false, reason: 'Nie znaleziono wybranego surowca' };
 
@@ -35,7 +49,7 @@
       country.portfolio.commodities[commodityId] = currentQty + cleanAmount;
 
       // Market Impact: Large purchases push market spot price up
-      const marketImpactRatio = Math.min(0.08, (totalCost / 5000000000) * 0.02);
+      const marketImpactRatio = Math.min(0.20, (totalCost / 5000000000) * 0.02);
       item.currentPrice = Math.round(item.currentPrice * (1 + marketImpactRatio) * 100) / 100;
 
       // If Gold, apply sovereign rating boost
@@ -62,7 +76,7 @@
     sellCommodity(country, commodityId, amount) {
       const V = window.WorldForge.Core.Validators;
       const F = window.WorldForge.Format;
-      const commList = window.WorldForge.Data.Exchange.commodities;
+      const commList = this.getMarket(window.WorldForge.Core.GameState.getState()).commodities;
       const item = commList.find(c => c.id === commodityId);
       if (!item) return { success: false, reason: 'Nie znaleziono surowca' };
 
@@ -79,7 +93,7 @@
       country.portfolio.commodities[commodityId] -= cleanAmount;
 
       // Market Impact: Selling pushes price down
-      const marketImpactRatio = Math.min(0.08, (totalProceeds / 5000000000) * 0.02);
+      const marketImpactRatio = Math.min(0.20, (totalProceeds / 5000000000) * 0.02);
       item.currentPrice = Math.max(item.basePrice * 0.3, Math.round(item.currentPrice * (1 - marketImpactRatio) * 100) / 100);
 
       window.WorldForge.Core.GameState.addNotification(
@@ -98,7 +112,7 @@
     buyStock(country, ticker, sharesCount) {
       const V = window.WorldForge.Core.Validators;
       const F = window.WorldForge.Format;
-      const stocksList = window.WorldForge.Data.Exchange.stocks;
+      const stocksList = this.getMarket(window.WorldForge.Core.GameState.getState()).stocks;
       const stock = stocksList.find(s => s.ticker === ticker);
       if (!stock) return { success: false, reason: 'Nie znaleziono spółki' };
 
@@ -139,7 +153,7 @@
     sellStock(country, ticker, sharesCount) {
       const V = window.WorldForge.Core.Validators;
       const F = window.WorldForge.Format;
-      const stocksList = window.WorldForge.Data.Exchange.stocks;
+      const stocksList = this.getMarket(window.WorldForge.Core.GameState.getState()).stocks;
       const stock = stocksList.find(s => s.ticker === ticker);
       if (!stock) return { success: false, reason: 'Nie znaleziono spółki' };
 
@@ -161,31 +175,49 @@
 
     /**
      * Monthly Exchange Clearing & Dividend Distribution
+     *
+     * Model cen: błądzenie losowe + dryf inflacyjny + REGRESJA do wartości
+     * fundamentalnej (bazowej). Dzięki regresji odkształcenia wywołane dużymi
+     * zakupami/sprzedażami państwa stopniowo zanikają — cena po wykupie
+     * wraca ku podstawom, a po zrzuceniu pozycji odbija w górę.
      */
     processMonthly(state, turnNumber) {
       const R = window.WorldForge.Core.Random;
-      const commList = window.WorldForge.Data.Exchange.commodities || [];
-      const stocksList = window.WorldForge.Data.Exchange.stocks || [];
+      const market = this.getMarket(state);
+      const commList = market.commodities || [];
+      const stocksList = market.stocks || [];
+      const inflationRate = (state.globalInflation || 2.5) / 100;
 
-      // 1. Stochastic Price Ticks for Commodities
+      // 1. Stochastic Price Ticks for Commodities (z regresją do basePrice)
       for (const item of commList) {
-        const drift = (state.globalInflation || 2.5) / 1200;
-        const noise = R.gaussian(0, item.volatility || 0.03);
-        item.currentPrice = Math.max(item.basePrice * 0.35, Math.round(item.currentPrice * (1 + drift + noise) * 100) / 100);
-        
+        const reversionGap = item.basePrice - item.currentPrice;
+        const reversion = reversionGap * 0.08; // ~8% miesięcznego luku do wartości fundamentalnej
+        const drift = item.currentPrice * (inflationRate / 12);
+        const noise = item.currentPrice * R.gaussian(0, item.volatility || 0.03);
+
+        let next = item.currentPrice + reversion + drift + noise;
+        next = Math.min(item.basePrice * 4.0, Math.max(item.basePrice * 0.35, next));
+        item.currentPrice = Math.round(next * 100) / 100;
+
         if (!item.priceHistory) item.priceHistory = [];
         item.priceHistory.push(item.currentPrice);
-        if (item.priceHistory.length > 36) item.priceHistory.shift();
+        if (item.priceHistory.length > 60) item.priceHistory.shift();
       }
 
-      // 2. Stochastic Price Ticks for Equities & Dividend Payouts
+      // 2. Stochastic Price Ticks for Equities (regresja do wartosci bazowej wolno rosnacej inflacja)
       for (const stock of stocksList) {
-        const noise = R.gaussian(0, 0.035);
-        stock.sharePrice = Math.max(0.5, Math.round(stock.sharePrice * (1 + noise) * 100) / 100);
+        if (!stock.baseSharePrice) stock.baseSharePrice = stock.sharePrice;
+        const fairValue = stock.baseSharePrice * (1 + inflationRate * (turnNumber / 120));
+        const reversion = (fairValue - stock.sharePrice) * 0.05;
+        const noise = stock.sharePrice * R.gaussian(0, 0.035);
+
+        let next = stock.sharePrice + reversion + noise;
+        next = Math.max(0.5, next);
+        stock.sharePrice = Math.round(next * 100) / 100;
 
         if (!stock.priceHistory) stock.priceHistory = [];
         stock.priceHistory.push(stock.sharePrice);
-        if (stock.priceHistory.length > 36) stock.priceHistory.shift();
+        if (stock.priceHistory.length > 60) stock.priceHistory.shift();
       }
 
       // 3. Process Dividends into Sovereign Portfolios

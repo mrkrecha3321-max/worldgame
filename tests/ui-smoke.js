@@ -212,6 +212,65 @@ function assert(condition, label) {
     assert((testFactory.lastMonthlyProfit || 0) > 1000000, `Dywidenda państwowa wpływa co miesiąc (${WF.Format.money(testFactory.lastMonthlyProfit || 0, 'USD')}/m-c)`);
     assert((cG.stateEnterpriseDividends || 0) > 0, `Suma dywidend sektora państwowego: ${WF.Format.money(cG.stateEnterpriseDividends || 0, 'USD')}/m-c`);
     assert((cG.budget.revenues.soeDividends || 0) > (cG.budget.revenues.soeDividends || 0) - (cG.stateEnterpriseDividends || 0), 'Dywidendy ujęte w przychodach budżetu (soeDividends)');
+    assert((testFactory.lastMonthlySurplus || 0) > 0, `Nadwyżka produkcyjna trafia do magazynu (${testFactory.lastMonthlySurplus || 0} jedn./m-c do sprzedaży)`);
+  }
+
+  console.log('\n--- 11. Giełda: ceny, regresja, wpływ transakcji, wykres ---');
+  const ExSys = WF.Systems.Exchange;
+  const market = WF.Core.GameState.getState().exchange;
+  assert(!!market && market.commodities.length > 3 && market.stocks.length > 3, `Rynek giełdowy w stanie gry (surowce: ${market?.commodities.length}, spółki: ${market?.stocks.length})`);
+
+  const gold = market.commodities.find(c => c.id === 'gold');
+  const goldHistLen = (gold.priceHistory || []).length;
+
+  // Kupno podbija cenę
+  const goldPriceBefore = gold.currentPrice;
+  let buyRes = ExSys.buyCommodity(cG, 'gold', 2000000); // ~5 mld USD
+  assert(buyRes.success === true, `Zakup złota wykonany (${buyRes.reason || 'OK'})`);
+  assert(gold.currentPrice > goldPriceBefore, `Kupno podbija cenę ($${goldPriceBefore} → $${gold.currentPrice})`);
+
+  // Sprzedaż zrzuca cenę (symetryczny market impact)
+  const priceAfterBuy = gold.currentPrice;
+  const ownedGold = cG.portfolio?.commodities?.gold || 0;
+  let sellRes = ExSys.sellCommodity(cG, 'gold', ownedGold);
+  assert(sellRes.success === true && gold.currentPrice < priceAfterBuy, `Sprzedaż OBIŻA cenę ($${priceAfterBuy} → $${gold.currentPrice}) — brak trwałej "zamrożonej" podwyżki`);
+
+  // Regresja do wartości fundamentalnej: sztuczne odkształcenie +30%, 12 tur → ceny wracają ku bazie
+  gold.currentPrice = Math.round(gold.basePrice * 1.30);
+  const pumped = gold.currentPrice;
+  for (let i = 0; i < 12; i++) { TE.nextTurn(); await sleep(25); }
+  const reverted = gold.currentPrice;
+  const gapClosed = (pumped - reverted) / (pumped - gold.basePrice);
+  assert(gapClosed > 0.25, `Regresja do wartości fundamentalnej: ${Math.round(gapClosed * 100)}% odkształcenia cofnięte po 12 m-cach ($${pumped} → $${reverted}, baza $${gold.basePrice})`);
+  assert((gold.priceHistory || []).length >= Math.min(60, goldHistLen + 12) && gold.priceHistory[gold.priceHistory.length - 1] === gold.currentPrice, `Historia cen aktualizuje się co turę (${goldHistLen} → ${gold.priceHistory.length} wpisów, limit 60, ostatni = cena bieżąca)`);
+
+  // Wykres świecowy: 2 kolory i wąskie świece
+  const synth = { priceHistory: [100, 103, 99, 97, 101, 104, 100], currentPrice: 100 };
+  const svg = WF.UI.Exchange.renderCandlestickChartSvg(synth, 420, 130);
+  assert(svg.includes('var(--positive)') && svg.includes('var(--negative)'), 'Wykres świecowy ma 2 kolory (wzrost/spadek)');
+  assert(!svg.includes('width="12"'), 'Świece są wąskie i dopasowane (bez sztucznego minimum 12px)');
+
+  // Zapis/wczytanie zachowuje ceny giełdy
+  WF.Core.SaveSystem.saveGame('slot2');
+  const savedGoldPrice = gold.currentPrice;
+  gold.currentPrice = 1;
+  const loadRes2 = WF.Core.SaveSystem.loadGame('slot2');
+  const goldAfterLoad = WF.Core.GameState.getState().exchange.commodities.find(c => c.id === 'gold');
+  assert(loadRes2 !== false && Math.abs(goldAfterLoad.currentPrice - savedGoldPrice) < 0.5, `Ceny giełdy zapisują się i wczytują (po wczytaniu: $${goldAfterLoad.currentPrice})`);
+
+  // Poziomy modernizacji: koszt ×1.5geometrycznie, limit 5
+  if (testFactory) {
+    const fac3 = WF.Core.GameState.getState().countries[POL].factories.find(f => f.id === testFactory.id);
+    const lvl = fac3.level;
+    if (lvl < 5) {
+      const cost = Math.round(300000000 * Math.pow(1.5, lvl - 1));
+      const tBefore = WF.Core.GameState.getState().countries[POL].treasury;
+      const upRes = C.dispatch({ type: 'EXPAND_FACTORY', countryId: POL, payload: { factoryId: fac3.id } });
+      assert(upRes.success === true && Math.abs(tBefore - WF.Core.GameState.getState().countries[POL].treasury - cost) < 1, `Modernizacja kosztuje ${WF.Format.money(cost, 'USD')} (×1.5 za poziom)`);
+    }
+    fac3.level = 5;
+    const maxRes = C.dispatch({ type: 'EXPAND_FACTORY', countryId: POL, payload: { factoryId: fac3.id } });
+    assert(maxRes.success === false, `Limit poziomów fabryki działa (poziom 5 = MAX: ${maxRes.reason})`);
   }
 
   console.log('\n====================================================');

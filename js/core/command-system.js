@@ -334,28 +334,37 @@
       });
 
       // 12. FACTORY SYSTEM: Expand / Upgrade Factory
+      // Koszt modernizacji rośnie geometrycznie (x1.5 jak przychód zakładu),
+      // maksymalny poziom to 5 — inaczej kolejne poziomy dawałyby wykładniczo
+      // rosnący zwrot przy liniowo rosnącym koszcie.
       this.registerHandler('EXPAND_FACTORY', (state, payload, countryId) => {
+        const MAX_FACTORY_LEVEL = 5;
         const country = state.countries[countryId];
         if (!country.factories) return { success: false, reason: 'Brak fabryk' };
         const factory = country.factories.find(f => f.id === payload.factoryId);
         if (!factory) return { success: false, reason: 'Nie znaleziono wybranej fabryki' };
 
-        const upgradeCost = Math.round(300000000 * factory.level);
+        if (factory.level >= MAX_FACTORY_LEVEL) {
+          return { success: false, reason: `Zakład osiągnął maksymalny poziom modernizacji (${MAX_FACTORY_LEVEL}).` };
+        }
+
+        const upgradeCost = Math.round(300000000 * Math.pow(1.5, factory.level - 1));
         if (country.treasury < upgradeCost) {
           return { success: false, reason: `Niewystarczające środki na modernizację (${F.money(upgradeCost, 'USD')})` };
         }
 
         country.treasury -= upgradeCost;
+        const oldBoost = factory.capacityBoost;
         factory.level += 1;
         factory.capacityBoost = Math.round(factory.capacityBoost * 1.5);
         if (country.production && country.production[factory.sector]) {
-          country.production[factory.sector].capacity += Math.round(factory.capacityBoost * 0.5);
+          country.production[factory.sector].capacity += Math.max(1, factory.capacityBoost - oldBoost);
         }
 
         window.WorldForge.Core.GameState.addNotification(
           'info',
           'Modernizacja Zakładu Przemysłowego',
-          `Zakład "${factory.name}" został zmodernizowany do poziomu ${factory.level}. Zdolności produkcyjne wzrosły.`,
+          `Zakład "${factory.name}" został zmodernizowany do poziomu ${factory.level}/${MAX_FACTORY_LEVEL}. Dywidenda i nadwyżka produkcyjna wzrosły o 50%.`,
           countryId
         );
 

@@ -80,6 +80,7 @@
                       ${!isBuilding && fac.ownership !== 'PRIVATE' && fac.lastMonthlyProfit > 0 ? `
                         <div style="font-size: 10px; color: var(--positive); margin-top: 2px;">
                           💰 Dywidenda: <strong class="font-mono">${F.money(fac.lastMonthlyProfit, 'USD')}/m-c</strong>
+                          ${fac.lastMonthlySurplus ? `• 📦 Nadwyżka do magazynu: <strong class="font-mono">${fac.lastMonthlySurplus}</strong> jedn./m-c` : ''}
                         </div>
                       ` : ''}
                       ${isBuilding ? `
@@ -89,11 +90,12 @@
                       ` : ''}
                     </div>
                     <div>
-                      ${!isBuilding ? `
+                      ${!isBuilding ? (fac.level >= 5
+                        ? '<span class="wf-badge wf-badge-cyan" title="Osiągnięto maksymalny poziom">MAX</span>'
+                        : `
                         <button class="wf-btn wf-btn-sm wf-btn-secondary btn-upgrade-factory" data-fac-id="${fac.id}">
-                          Modernizuj (${F.money(300000000 * fac.level, 'USD')})
-                        </button>
-                      ` : ''}
+                          Modernizuj (${F.money(Math.round(300000000 * Math.pow(1.5, fac.level - 1)), 'USD')})
+                        </button>`) : ''}
                     </div>
                   </div>
                 `;

@@ -72,6 +72,16 @@
 
               fac.lastMonthlyProfit = dividend;
               stateDividends += dividend;
+
+              // Nadwyżka produkcyjna zakładu trafia do państwowego magazynu
+              // (gracz może ją sprzedawać na giełdzie surowców / w kontraktach).
+              // Magazyn ma limit, by nadmiar nie rozsadzał zapisu gry.
+              if (prod[fac.sector]) {
+                const surplusUnits = Math.round(fac.capacityBoost * utilization * 0.15);
+                const stockCap = Math.max(60000, prod[fac.sector].capacity * 1.5);
+                prod[fac.sector].stockpile = Math.min(stockCap, prod[fac.sector].stockpile + surplusUnits);
+                fac.lastMonthlySurplus = surplusUnits;
+              }
             }
           }
           country.stateEnterpriseDividends = stateDividends;

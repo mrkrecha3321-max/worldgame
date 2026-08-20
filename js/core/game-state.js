@@ -50,6 +50,7 @@
           priceHistory: {},
           globalVolume: {}
         },
+        exchange: null, // rynek giełdowy (kopiowany z danych przy inicjalizacji — patrz ensureExchangeMarket)
         bilateralDeals: [],
         diplomaticTreaties: [],
         activeEvents: [],
@@ -81,6 +82,10 @@
         this.state.globalMarket.priceHistory[res.id] = [res.basePrice];
         this.state.globalMarket.globalVolume[res.id] = { supply: 1000000, demand: 1000000 };
       }
+
+      // Initialize sovereign exchange market (deep copy: prices are game-state,
+      // not static data — dzięki temu zapisują się w save'ach i synchronizują w multiplayerze)
+      this.ensureExchangeMarket();
 
       // Initialize each country
       for (const cData of countriesData) {
@@ -528,6 +533,39 @@
 
     getState() {
       return this.state;
+    }
+
+    /**
+     * Tworzy (jeśli jeszcze nie istnieje) kopię rynku giełdowego w stanie gry.
+     * Wywoływane przy inicjalizacji nowej gry oraz po wczytaniu starszych
+     * zapisów, które nie zawierały sekcji `exchange`.
+     */
+    ensureExchangeMarket() {
+      if (this.state.exchange && Array.isArray(this.state.exchange.commodities)) return this.state.exchange;
+
+      const src = window.WorldForge.Data.Exchange || { commodities: [], stocks: [] };
+      const clone = (obj) => JSON.parse(JSON.stringify(obj));
+
+      this.state.exchange = {
+        commodities: clone(src.commodities).map(c => {
+          c.priceHistory = Array.isArray(c.priceHistory) && c.priceHistory.length > 1
+            ? c.priceHistory.slice(-60)
+            : [c.currentPrice];
+          return c;
+        }),
+        stocks: clone(src.stocks).map(s => {
+          s.baseSharePrice = s.baseSharePrice || s.sharePrice;
+          s.priceHistory = Array.isArray(s.priceHistory) && s.priceHistory.length > 1
+            ? s.priceHistory.slice(-60)
+            : [s.sharePrice];
+          return s;
+        })
+      };
+      return this.state.exchange;
+    }
+
+    getExchangeMarket() {
+      return this.ensureExchangeMarket();
     }
 
     getPlayerCountry() {

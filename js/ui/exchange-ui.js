@@ -25,7 +25,7 @@
       if (!state || !country) return;
 
       const F = window.WorldForge.Format;
-      const exData = window.WorldForge.Data.Exchange;
+      const exData = window.WorldForge.Core.GameState.getExchangeMarket();
       const portfolio = country.portfolio || { commodities: {}, stocks: {}, monthlyDividends: 0 };
       const goldOz = portfolio.commodities?.gold || 0;
       const goldTons = (goldOz / 32150.7).toFixed(1);
@@ -86,7 +86,14 @@
           <div class="wf-card" style="padding: 10px;">
             <div class="card-header">
               <span class="card-title">Wykres Notowań Świecowych: ${activeCommodity.icon} ${activeCommodity.name}</span>
-              <span class="font-mono text-positive" style="font-size: 13px; font-weight: 700;">$${activeCommodity.currentPrice.toLocaleString('pl-PL')} / ${activeCommodity.unit}</span>
+              ${(() => {
+                const ph = activeCommodity.priceHistory || [];
+                const cur = activeCommodity.currentPrice;
+                const prev = ph.length > 1 ? ph[ph.length - 2] : cur;
+                const chg = prev > 0 ? ((cur - prev) / prev) * 100 : 0;
+                const cls = chg >= 0 ? 'text-positive' : 'text-negative';
+                return `<span class="font-mono ${cls}" style="font-size: 13px; font-weight: 700;">$${cur.toLocaleString('pl-PL')} <small>(${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%)</small> / ${activeCommodity.unit}</span>`;
+              })()}
             </div>
             
             <!-- Candlestick Chart SVG Canvas -->
@@ -208,53 +215,92 @@
       this.bindEvents(container);
     },
 
-    renderCandlestickChartSvg(item, width = 400, height = 110) {
-      const history = item.priceHistory || [item.basePrice, item.currentPrice];
+    renderCandlestickChartSvg(item, width = 420, height = 130) {
+      const fullHistory = (item.priceHistory && item.priceHistory.length > 1)
+        ? item.priceHistory
+        : [item.currentPrice * 0.985, item.currentPrice * 0.99, item.currentPrice];
+      // Ostatnie 30 odczytów (swiece miesieczne)
+      const history = fullHistory.slice(-30);
       if (history.length < 2) return '';
 
-      const minPrice = Math.min(...history) * 0.96;
-      const maxPrice = Math.max(...history) * 1.04;
-      const range = maxPrice - minPrice || 1;
+      const currentPrice = (item.currentPrice !== undefined) ? item.currentPrice : item.sharePrice;
 
-      const numBars = history.length;
-      const barWidth = Math.max(12, Math.floor((width - 40) / numBars));
-      const padding = 15;
+      const padL = 8;
+      const padR = 52; // miejsce na etykiety cen po prawej
+      const padY = 10;
+      const chartW = width - padL - padR;
+      const chartH = height - padY * 2;
+
+      const minPrice = Math.min(...history) * 0.985;
+      const maxPrice = Math.max(...history) * 1.015;
+      const range = Math.max(1e-9, maxPrice - minPrice);
+
+      const n = history.length;
+      const slot = chartW / n;
+      const gap = Math.min(3, slot * 0.25);
+      const barWidth = Math.max(1.5, slot - gap); // wąskie świece dopasowane do szerokości
+
+      const yOf = (price) => padY + chartH - ((price - minPrice) / range) * chartH;
 
       let candlesHtml = '';
+      let gridHtml = '';
+      let labelsHtml = '';
+
+      // Poziome linie: min / max / ostatnia cena
+      const priceLines = [
+        { price: maxPrice / 1.015, label: 'max', color: 'var(--border-light)' },
+        { price: minPrice / 0.985, label: 'min', color: 'var(--border-light)' },
+        { price: currentPrice, label: 'teraz', color: 'var(--accent)' }
+      ];
+      for (const pl of priceLines) {
+        const y = Math.round(yOf(pl.price)) + 0.5;
+        gridHtml += `<line x1="${padL}" y1="${y}" x2="${padL + chartW}" y2="${y}" stroke="${pl.color}" stroke-width="0.75" stroke-dasharray="3 3" ${pl.label === 'teraz' ? '' : 'opacity="0.6"'} />`;
+        labelsHtml += `<text x="${padL + chartW + 4}" y="${y + 3}" font-size="8.5" font-family="var(--font-mono)" fill="${pl.label === 'teraz' ? 'var(--accent)' : 'var(--text-muted)'}">${pl.price >= 1000 ? (pl.price / 1000).toFixed(1) + 'k' : pl.price.toFixed(1)}</text>`;
+      }
 
       history.forEach((price, idx) => {
-        const prevPrice = idx > 0 ? history[idx - 1] : price * 0.99;
-        const isGreen = price >= prevPrice;
+        const prevPrice = idx > 0 ? history[idx - 1] : price * 0.997;
         const open = prevPrice;
         const close = price;
-        const high = Math.max(open, close) * 1.01;
-        const low = Math.min(open, close) * 0.99;
+        const high = Math.max(open, close) * (1 + 0.004 * (0.5 + Math.abs(Math.sin(idx * 7.3))));
+        const low = Math.min(open, close) * (1 - 0.004 * (0.5 + Math.abs(Math.cos(idx * 5.1))));
 
-        const x = padding + idx * (barWidth + 6);
-        const yHigh = height - padding - ((high - minPrice) / range) * (height - padding * 2);
-        const yLow = height - padding - ((low - minPrice) / range) * (height - padding * 2);
-        const yOpen = height - padding - ((open - minPrice) / range) * (height - padding * 2);
-        const yClose = height - padding - ((close - minPrice) / range) * (height - padding * 2);
+        const up = close >= open;
+        const color = up ? 'var(--positive)' : 'var(--negative)';
 
-        const color = isGreen ? 'var(--positive)' : 'var(--negative)';
+        const x = padL + idx * slot + gap / 2;
+        const yHigh = yOf(high);
+        const yLow = yOf(low);
+        const yOpen = yOf(open);
+        const yClose = yOf(close);
+
         const candleTop = Math.min(yOpen, yClose);
-        const candleHeight = Math.max(3, Math.abs(yClose - yOpen));
+        const candleHeight = Math.max(1.2, Math.abs(yClose - yOpen));
+
+        const candleTitle = `O: ${open.toFixed(2)} | C: ${close.toFixed(2)} | ${up ? '▲ +' : '▼ '}${(((close - open) / Math.max(1e-9, open)) * 100).toFixed(2)}%`;
 
         candlesHtml += `
-          <!-- Wick line -->
-          <line x1="${x + barWidth / 2}" y1="${yHigh}" x2="${x + barWidth / 2}" y2="${yLow}" stroke="${color}" stroke-width="1" />
-          <!-- Candle body -->
-          <rect x="${x}" y="${candleTop}" width="${barWidth}" height="${candleHeight}" fill="${color}" stroke="${color}" rx="1" />
+          <g>
+            <title>${candleTitle}</title>
+            <line x1="${(x + barWidth / 2).toFixed(1)}" y1="${yHigh.toFixed(1)}" x2="${(x + barWidth / 2).toFixed(1)}" y2="${yLow.toFixed(1)}" stroke="${color}" stroke-width="0.9" opacity="0.85" />
+            <rect x="${x.toFixed(1)}" y="${candleTop.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${candleHeight.toFixed(1)}" fill="${color}" stroke="${color}" stroke-width="0.5" rx="0.5" />
+          </g>
         `;
       });
 
+      // Zmiana ostatniego okresu (kolor + procent)
+      const last = history[history.length - 1];
+      const prev = history[history.length - 2];
+      const chgPct = ((last - prev) / Math.max(1e-9, prev)) * 100;
+      const chgColor = chgPct >= 0 ? 'var(--positive)' : 'var(--negative)';
+
       return `
-        <svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" style="overflow: visible; background: var(--bg-panel-secondary); border-radius: var(--border-radius-xs); border: 1px solid var(--border);">
-          <!-- Background price gridlines -->
-          <line x1="0" y1="${height * 0.25}" x2="${width}" y2="${height * 0.25}" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="2 2" />
-          <line x1="0" y1="${height * 0.5}" x2="${width}" y2="${height * 0.5}" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="2 2" />
-          <line x1="0" y1="${height * 0.75}" x2="${width}" y2="${height * 0.75}" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="2 2" />
+        <svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="display:block; background: var(--bg-panel-secondary); border-radius: var(--border-radius-xs); border: 1px solid var(--border);">
+          ${gridHtml}
           ${candlesHtml}
+          ${labelsHtml}
+          <text x="${padL + 2}" y="${height - 2}" font-size="8.5" fill="var(--text-muted)">ostatnie ${n} okresów (m-c)</text>
+          <text x="${padL + 2}" y="${11}" font-size="9" font-weight="700" fill="${chgColor}" font-family="var(--font-mono)">${chgPct >= 0 ? '▲ +' : '▼ '}${chgPct.toFixed(2)}%</text>
         </svg>
       `;
     },
@@ -310,7 +356,7 @@
     },
 
     showBuyCommodityDialog(country, commId, container) {
-      const item = window.WorldForge.Data.Exchange.commodities.find(c => c.id === commId);
+      const item = window.WorldForge.Core.GameState.getExchangeMarket().commodities.find(c => c.id === commId);
       if (!item) return;
       const F = window.WorldForge.Format;
 
@@ -349,7 +395,7 @@
     },
 
     showSellCommodityDialog(country, commId, container) {
-      const item = window.WorldForge.Data.Exchange.commodities.find(c => c.id === commId);
+      const item = window.WorldForge.Core.GameState.getExchangeMarket().commodities.find(c => c.id === commId);
       const owned = country.portfolio?.commodities?.[commId] || 0;
       if (!item || owned <= 0) return;
 
@@ -382,7 +428,7 @@
     },
 
     showBuyStockDialog(country, ticker, container) {
-      const stock = window.WorldForge.Data.Exchange.stocks.find(s => s.ticker === ticker);
+      const stock = window.WorldForge.Core.GameState.getExchangeMarket().stocks.find(s => s.ticker === ticker);
       if (!stock) return;
 
       window.WorldForge.UI.Modal.show({
@@ -417,7 +463,7 @@
     },
 
     showSellStockDialog(country, ticker, container) {
-      const stock = window.WorldForge.Data.Exchange.stocks.find(s => s.ticker === ticker);
+      const stock = window.WorldForge.Core.GameState.getExchangeMarket().stocks.find(s => s.ticker === ticker);
       const owned = country.portfolio?.stocks?.[ticker] || 0;
       if (!stock || owned <= 0) return;
 
