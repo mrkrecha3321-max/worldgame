@@ -1,0 +1,239 @@
+/**
+ * WorldForge: Nations - Interaktywna Mapa Świata (GIS / D3)
+ * Kontener mapy, pasek warstw, zoom, legenda i tooltip.
+ */
+
+/* ===== Kontener główny mapy ===== */
+.map-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--map-ocean);
+}
+
+/* ===== Płótno SVG ===== */
+.world-map-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+.world-map-svg:active {
+  cursor: grabbing;
+}
+.world-map-svg path,
+.world-map-svg circle,
+.world-map-svg line {
+  vector-effect: non-scaling-stroke;
+}
+
+/* ===== Pływający pasek warstw tematycznych ===== */
+.map-floating-controls {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: calc(100% - 110px);
+}
+
+.map-layer-selector {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px;
+  padding: 5px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-sm);
+  box-shadow: var(--shadow-panel);
+}
+
+.map-mode-btn {
+  padding: 4px 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-xs);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.map-mode-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-panel-hover);
+}
+.map-mode-btn.active {
+  color: var(--accent);
+  background: var(--accent-subtle);
+  border-color: rgba(76, 194, 255, 0.4);
+}
+
+/* ===== Pad sterowania zoomem ===== */
+.map-zoom-pad {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.map-zoom-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  box-shadow: var(--shadow-panel);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.map-zoom-btn:hover {
+  color: var(--accent);
+  background: var(--bg-panel-hover);
+  border-color: var(--border-light);
+}
+
+/* ===== Legenda warstwy ===== */
+.map-legend-box {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 20;
+  min-width: 170px;
+  max-width: 250px;
+  padding: 10px 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-sm);
+  box-shadow: var(--shadow-panel);
+}
+
+.map-legend-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--accent);
+  margin-bottom: 7px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--border);
+}
+
+.map-legend-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.map-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+.map-legend-color {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  flex-shrink: 0;
+}
+
+/* ===== Tooltip hover państwa ===== */
+.map-tooltip {
+  position: fixed;
+  z-index: 1000;
+  display: none;
+  max-width: 280px;
+  padding: 8px 11px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-light);
+  border-radius: var(--border-radius-sm);
+  box-shadow: var(--shadow-modal);
+  pointer-events: none;
+  white-space: normal;
+}
+.map-tooltip.visible {
+  display: block;
+}
+.map-tooltip .font-mono {
+  color: var(--accent);
+}
+
+/* ===== Etykiety państw na mapie ===== */
+.world-map-svg text.map-country-label {
+  fill: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  paint-order: stroke;
+  stroke: rgba(11, 16, 22, 0.85);
+  stroke-width: 2.5px;
+  pointer-events: none;
+  text-anchor: middle;
+}
+.world-map-svg text.map-country-label.player {
+  fill: var(--accent);
+}
+
+/* ===== Siatka geograficzna (graticule) ===== */
+.world-map-svg path.graticule {
+  fill: none;
+  stroke: var(--map-grid-line);
+  stroke-width: 0.6;
+  pointer-events: none;
+}
+
+/* ===== Kontur państw ===== */
+.world-map-svg path.country-path {
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+.world-map-svg path.country-path:hover {
+  filter: brightness(1.35);
+}
+.world-map-svg path.country-path.selected {
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+
+/* ===== Węzły strategiczne i szlaki ===== */
+.world-map-svg circle.map-strategic-node {
+  cursor: pointer;
+}
+.world-map-svg path.map-trade-route {
+  fill: none;
+  stroke-linecap: round;
+  opacity: 0.55;
+}
+.world-map-svg path.map-trade-route.animated {
+  stroke-dasharray: 5 4;
+  animation: map-route-flow 1.4s linear infinite;
+}
+
+@keyframes map-route-flow {
+  to {
+    stroke-dashoffset: -18;
+  }
+}

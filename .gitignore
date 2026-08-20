@@ -1,0 +1,19 @@
+# Zależności
+node_modules/
+
+# Pliki systemowe
+.DS_Store
+Thumbs.db
+
+# Edytory
+.vscode/
+.idea/
+*.swp
+
+# Logi i tymczasowe
+*.log
+npm-debug.log*
+.env
+
+# Prywatne zapiski
+notatki/

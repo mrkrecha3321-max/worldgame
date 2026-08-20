@@ -1,0 +1,188 @@
+/**
+ * WorldForge: Nations - Responsywność & Adaptacyjny Layout
+ * Duże biurko -> laptop -> tablet -> telefon.
+ * (layout bazowy jest flexbowym szkieletem: top-bar / workspace / bottom-bar)
+ */
+
+/* ===== Laptop / małe biurko (<= 1366px) ===== */
+@media (max-width: 1366px) {
+  .top-stats-strip .stat-pill:nth-child(n+6) {
+    display: none; /* ukryj Odstraszanie i kolejne mniej krytyczne pigułki */
+  }
+  #right-drawer {
+    width: 400px;
+    min-width: 300px;
+  }
+}
+
+/* ===== Tablet / wąski laptop (<= 1100px) ===== */
+@media (max-width: 1100px) {
+  .top-stats-strip .stat-pill:nth-child(n+5) {
+    display: none;
+  }
+
+  /* Drawer zamienia się w wysuwany panel nad mapą */
+  #right-drawer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 100%;
+    z-index: 60;
+    width: min(420px, 85vw);
+    min-width: min(420px, 85vw);
+    box-shadow: var(--shadow-modal);
+  }
+  #right-drawer.collapsed {
+    display: none;
+  }
+  .map-legend-box {
+    max-width: 200px;
+  }
+}
+
+/* ===== Tablet pion / duży telefon (<= 820px) ===== */
+@media (max-width: 820px) {
+  #top-bar {
+    height: auto;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 10px;
+  }
+  .top-stats-strip {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    justify-content: flex-start;
+    padding-bottom: 2px;
+  }
+  .top-stats-strip .stat-pill {
+    flex-shrink: 0;
+  }
+  .top-stats-strip .stat-pill:nth-child(n+5) {
+    display: flex; /* przywróć przewijane pigułki w osobnym rzędzie */
+  }
+  .top-country-badge .country-name {
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #left-sidebar {
+    width: 44px;
+    min-width: 44px;
+  }
+
+  #right-drawer {
+    width: min(400px, 92vw);
+    min-width: min(400px, 92vw);
+  }
+
+  .map-floating-controls {
+    max-width: calc(100% - 60px);
+    top: 6px;
+  }
+  .map-layer-selector {
+    gap: 2px;
+    padding: 4px;
+  }
+  .map-mode-btn {
+    padding: 4px 7px;
+    font-size: 9.5px;
+  }
+  .map-zoom-pad {
+    top: 6px;
+    right: 6px;
+  }
+  .map-zoom-btn {
+    width: 30px;
+    height: 30px;
+  }
+  .map-legend-box {
+    bottom: 8px;
+    left: 8px;
+    min-width: 140px;
+    padding: 8px 9px;
+  }
+
+  #bottom-bar {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 10px;
+    height: auto;
+  }
+  .turn-progress-container {
+    order: 3;
+    width: 100%;
+    flex: 1 1 100%;
+  }
+}
+
+/* ===== Telefon (<= 560px) ===== */
+@media (max-width: 560px) {
+  .top-brand .logo-title {
+    font-size: 11px;
+    letter-spacing: 0.8px;
+  }
+  .top-controls #currency-display-selector {
+    display: none;
+  }
+  .top-stats-strip .stat-pill:nth-child(n+5) {
+    display: none;
+  }
+
+  #left-sidebar {
+    width: 40px;
+    min-width: 40px;
+  }
+  .nav-item {
+    width: 34px;
+    height: 34px;
+  }
+  .nav-item .nav-label,
+  .nav-item span:not(.nav-icon) {
+    display: none;
+  }
+
+  #right-drawer {
+    width: 100vw;
+    min-width: 100vw;
+  }
+
+  .map-legend-box {
+    display: none; /* brak miejsca - legenda wraca po powiększeniu ekranu */
+  }
+  .map-floating-controls {
+    bottom: 8px;
+    top: auto;
+    max-width: calc(100% - 58px);
+  }
+
+  #bottom-bar .time-display span:first-child {
+    display: none;
+  }
+}
+
+/* ===== Niskie ekrany (odzyskaj miejsce na mapę) ===== */
+@media (max-height: 760px) {
+  #top-bar {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+  #bottom-bar {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+}
+
+/* ===== Druk / eksport widoku ===== */
+@media print {
+  #left-sidebar,
+  #bottom-bar,
+  #top-bar .top-controls,
+  .map-floating-controls,
+  .map-zoom-pad,
+  #right-drawer {
+    display: none !important;
+  }
+}

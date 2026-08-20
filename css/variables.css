@@ -1,0 +1,62 @@
+/**
+ * WorldForge: Nations - Design Tokens & Theme Variables
+ * Sober, professional analytical workstation palette (dark slate + cyan accent).
+ * Ten plik MUSI być pierwszym ładowanym arkuszem stylów.
+ */
+:root {
+  /* ===== Typografia ===== */
+  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
+
+  /* ===== Tła ===== */
+  --bg-main: #10161c;               /* główna powierzchnia aplikacji */
+  --bg-panel: #18212a;              /* panele, karty, drawer */
+  --bg-panel-secondary: #1e2a35;    /* zagnieżdżone sekcje, wiersze tabel */
+  --bg-panel-hover: #24313e;        /* hover interaktywnych elementów */
+  --bg-input: #0d1319;              /* pola formularzy */
+  --bg-modal-backdrop: rgba(4, 8, 12, 0.72);
+
+  /* ===== Tekst ===== */
+  --text-primary: #dde5ec;
+  --text-secondary: #9fb0bf;
+  --text-muted: #67727e;
+
+  /* ===== Akcent (cyan analityczny) ===== */
+  --accent: #4cc2ff;
+  --accent-hover: #7ad2ff;
+  --accent-subtle: rgba(76, 194, 255, 0.12);
+
+  /* ===== Semantyka: pozytyw / negatyw / ostrzeżenie ===== */
+  --positive: #4fce7d;
+  --positive-bg: rgba(79, 206, 125, 0.12);
+  --positive-border: rgba(79, 206, 125, 0.35);
+  --negative: #f0635a;
+  --negative-bg: rgba(240, 99, 90, 0.12);
+  --negative-border: rgba(240, 99, 90, 0.35);
+  --warning: #f5b445;
+  --warning-bg: rgba(245, 180, 69, 0.12);
+  --warning-border: rgba(245, 180, 69, 0.35);
+
+  /* ===== Ramki i promienie ===== */
+  --border: #263340;
+  --border-light: #33465a;
+  --border-radius-xs: 3px;
+  --border-radius-sm: 6px;
+
+  /* ===== Cienie ===== */
+  --shadow-panel: 0 2px 10px rgba(0, 0, 0, 0.35);
+  --shadow-modal: 0 12px 48px rgba(0, 0, 0, 0.6);
+
+  /* ===== Odstępy ===== */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 14px;
+  --space-lg: 24px;
+
+  /* ===== Kartografia ===== */
+  --map-ocean: #0b1016;
+  --map-grid-line: rgba(103, 114, 126, 0.16);
+  --map-energy-node: #f5b445;
+  --map-port-node: #5e829c;
+  --map-military-base: #9e5554;
+}
