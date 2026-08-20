@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WorldForge: Nations - Global State Simulator</title>
+
+  <!-- Professional Cartography & Terminal Stylesheets -->
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/map.css">
+  <link rel="stylesheet" href="css/responsive.css">
+
+  <!-- Local Offline Vendor Libraries -->
+  <script defer src="vendor/d3.min.js"></script>
+
+  <!-- Core Scripts -->
+  <script defer src="js/core/namespace.js"></script>
+  <script defer src="js/core/seeded-random.js"></script>
+  <script defer src="js/core/validators.js"></script>
+  <script defer src="js/core/number-format.js"></script>
+  <script defer src="js/core/economic-validator.js"></script>
+  <script defer src="js/core/network-client.js"></script>
+  <script defer src="js/core/command-system.js"></script>
+  <script defer src="js/core/game-state.js"></script>
+  <script defer src="js/core/save-system.js"></script>
+  <script defer src="js/core/turn-engine.js"></script>
+
+  <!-- Geographic Data & Static Data Repositories -->
+  <script defer src="js/data/world-geography.js"></script>
+  <script defer src="js/data/world-map-data.js"></script>
+  <script defer src="js/data/resources.js"></script>
+  <script defer src="js/data/exchange-data.js"></script>
+  <script defer src="js/data/factories.js"></script>
+  <script defer src="js/data/projects.js"></script>
+  <script defer src="js/data/technologies.js"></script>
+  <script defer src="js/data/policies.js"></script>
+  <script defer src="js/data/events.js"></script>
+  <script defer src="js/data/countries.js"></script>
+  <script defer src="js/data/country-profiles.js"></script>
+
+  <!-- Simulation Engines -->
+  <script defer src="js/systems/economy-system.js"></script>
+  <script defer src="js/systems/exchange-system.js"></script>
+  <script defer src="js/systems/budget-system.js"></script>
+  <script defer src="js/systems/tax-system.js"></script>
+  <script defer src="js/systems/debt-system.js"></script>
+  <script defer src="js/systems/central-bank-system.js"></script>
+  <script defer src="js/systems/banking-system.js"></script>
+  <script defer src="js/systems/credit-system.js"></script>
+  <script defer src="js/systems/business-system.js"></script>
+  <script defer src="js/systems/household-system.js"></script>
+  <script defer src="js/systems/population-system.js"></script>
+  <script defer src="js/systems/production-system.js"></script>
+  <script defer src="js/systems/resource-system.js"></script>
+  <script defer src="js/systems/trade-system.js"></script>
+  <script defer src="js/systems/space-system.js"></script>
+  <script defer src="js/systems/conflict-system.js"></script>
+  <script defer src="js/systems/politics-system.js"></script>
+  <script defer src="js/systems/infrastructure-system.js"></script>
+  <script defer src="js/systems/energy-system.js"></script>
+  <script defer src="js/systems/research-system.js"></script>
+  <script defer src="js/systems/diplomacy-system.js"></script>
+  <script defer src="js/systems/military-system.js"></script>
+  <script defer src="js/systems/project-system.js"></script>
+  <script defer src="js/systems/event-system.js"></script>
+  <script defer src="js/systems/bot-system.js"></script>
+
+  <!-- UI Views -->
+  <script defer src="js/ui/modal-ui.js"></script>
+  <script defer src="js/ui/notifications-ui.js"></script>
+  <script defer src="js/ui/charts-ui.js"></script>
+  <script defer src="js/ui/start-screen.js"></script>
+  <script defer src="js/ui/multiplayer-ui.js"></script>
+  <script defer src="js/ui/navigation.js"></script>
+  <script defer src="js/ui/world-map-ui.js"></script>
+  <script defer src="js/ui/overview-ui.js"></script>
+  <script defer src="js/ui/exchange-ui.js"></script>
+  <script defer src="js/ui/budget-ui.js"></script>
+  <script defer src="js/ui/economy-ui.js"></script>
+  <script defer src="js/ui/banking-ui.js"></script>
+  <script defer src="js/ui/trade-ui.js"></script>
+  <script defer src="js/ui/space-ui.js"></script>
+  <script defer src="js/ui/conflict-ui.js"></script>
+  <script defer src="js/ui/population-ui.js"></script>
+  <script defer src="js/ui/infrastructure-ui.js"></script>
+  <script defer src="js/ui/research-ui.js"></script>
+  <script defer src="js/ui/military-ui.js"></script>
+  <script defer src="js/ui/diplomacy-ui.js"></script>
+  <script defer src="js/ui/reports-ui.js"></script>
+  <script defer src="js/ui/app-ui.js"></script>
+
+  <!-- Self Tests and Entry Point -->
+  <script defer src="tests/self-tests.js"></script>
+  <script defer src="js/main.js"></script>
+</head>
+<body>
+
+  <!-- Start Screen Overlay -->
+  <div id="start-screen-container"></div>
+
+  <!-- Main Strategic Terminal Shell -->
+  <div id="app-container">
+
+    <!-- Top Command Strip -->
+    <header id="top-bar">
+      
+      <!-- Brand & Active Country -->
+      <div class="top-brand">
+        <svg class="svg-icon" viewBox="0 0 24 24" style="color: var(--accent); width: 18px; height: 18px;">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="2" y1="12" x2="22" y2="12"/>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+        <span class="logo-title">WORLDFORGE: NATIONS</span>
+      </div>
+
+      <div class="top-country-badge" id="top-country-badge">
+        <span class="country-flag" id="top-country-flag">🇵🇱</span>
+        <span class="country-name" id="top-country-name">Polska (PLN)</span>
+      </div>
+
+      <!-- Quick Tabular Status Strip -->
+      <div class="top-stats-strip">
+        <div class="stat-pill">
+          <span class="stat-label">Skarb</span>
+          <span class="stat-value text-accent" id="top-stat-treasury">35,00 mld USD</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">Saldo M-c</span>
+          <span class="stat-value" id="top-stat-balance">+250,00 mln USD</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">PKB Nominalne</span>
+          <span class="stat-value text-positive" id="top-stat-gdp">860,00 mld USD</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">Inflacja</span>
+          <span class="stat-value text-warning" id="top-stat-inflation">3,8%</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">Bezrobocie</span>
+          <span class="stat-value" id="top-stat-unemployment">4,9%</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">Poparcie</span>
+          <span class="stat-value text-positive" id="top-stat-approval">52%</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">Odstraszanie</span>
+          <span class="stat-value text-accent" id="top-stat-deterrence">68/100</span>
+        </div>
+      </div>
+
+      <!-- Currency Switcher, Date & Drawer Controls -->
+      <div class="top-controls">
+        <select id="currency-display-selector" class="wf-select" style="padding: 2px 6px; font-size: 11px; height: 26px;">
+          <option value="LOCAL" selected>Waluta: Krajowa</option>
+          <option value="USD">Waluta: USD ($)</option>
+          <option value="EUR">Waluta: EUR (€)</option>
+        </select>
+        <span class="font-mono" id="top-date-display" style="font-size: 11px; color: var(--text-secondary);">Sierpień 2026</span>
+        <button class="wf-btn wf-btn-secondary wf-btn-sm" id="btn-toggle-news-drawer" title="Przełącz boczny panel analityczny">
+          <svg class="svg-icon" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="wf-badge wf-badge-red" id="notif-badge-count" style="display: none; font-size: 9px; margin-left: 2px;">0</span>
+        </button>
+      </div>
+
+    </header>
+
+    <!-- Main Central Workspace: Sidebar + World Map (70%+) + Contextual Drawer (28%) -->
+    <div id="workspace">
+
+      <!-- Left Narrow Icon Toolbar (48px) -->
+      <nav id="left-sidebar">
+        <div id="sidebar-nav-items" style="display: flex; flex-direction: column; gap: 2px; width: 100%; align-items: center;"></div>
+      </nav>
+
+      <!-- Center Large Interactive World Map (Primary Focus, Natural Earth GIS) -->
+      <div id="map-viewport"></div>
+
+      <!-- Right Contextual Analytical Drawer (Slides in next to Map) -->
+      <aside id="right-drawer">
+        <div class="drawer-header" id="right-drawer-header">
+          <h3 id="drawer-active-title">Przegląd Państwa</h3>
+          <button class="wf-btn wf-btn-sm wf-btn-secondary" id="btn-close-right-drawer" title="Zwiń panel" onclick="document.getElementById('right-drawer').classList.add('collapsed')">✕</button>
+        </div>
+        <div id="right-drawer-content" class="drawer-content"></div>
+      </aside>
+
+    </div>
+
+    <!-- Bottom Timeline & Simulation Speed Bar -->
+    <footer id="bottom-bar">
+      
+      <div class="time-display">
+        <span>Postęp miesiąca:</span>
+      </div>
+
+      <!-- Turn Progress Bar -->
+      <div class="turn-progress-container">
+        <div class="turn-progress-bar">
+          <div class="turn-progress-fill" id="turn-progress-fill"></div>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span id="bottom-time-remaining" class="font-mono text-muted" style="font-size: 11px; width: 35px;">180s</span>
+
+        <!-- Speed Buttons -->
+        <div class="turn-speed-buttons">
+          <button class="wf-btn wf-btn-speed" id="btn-speed-pause">⏸</button>
+          <button class="wf-btn wf-btn-speed active" id="btn-speed-1x">×1</button>
+          <button class="wf-btn wf-btn-speed" id="btn-speed-2x">×2</button>
+          <button class="wf-btn wf-btn-speed" id="btn-speed-4x">×4</button>
+        </div>
+
+        <button class="wf-btn wf-btn-primary wf-btn-sm" id="btn-next-turn-now">
+          Zakończ Miesiąc
+        </button>
+      </div>
+
+    </footer>
+
+  </div>
+
+</body>
+</html>
