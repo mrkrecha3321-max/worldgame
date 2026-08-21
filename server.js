@@ -22,7 +22,8 @@ const DEFAULT_PORTS = [
 ].filter(Boolean);
 
 const PUBLIC_DIR = __dirname;
-const DISCONNECT_GRACE_PERIOD_MS = 60000; // 60 seconds grace period
+// Okres ochronny po rozłączeniu (produkcja: 60 s; testy skracają przez MP_GRACE_MS)
+const DISCONNECT_GRACE_PERIOD_MS = parseInt(process.env.MP_GRACE_MS, 10) || 60000;
 const HEARTBEAT_INTERVAL_MS = 15000; // 15s ping/pong
 
 // MIME types for static assets

@@ -13,11 +13,15 @@
  * 10. Memory leak test: room cleanup after grace period expires
  */
 
+// Konfiguracja testu PRZED załadowaniem server.js (DEFAULT_PORTS czyta PORT przy require)
+const TEST_PORT = 3199;
+process.env.PORT = TEST_PORT.toString();
+process.env.MP_GRACE_MS = '400';
+
 const { WebSocket } = require('ws');
 const http = require('http');
 const { startServer, normalizeRoomCode, rooms, sessions, DISCONNECT_GRACE_PERIOD_MS } = require('../server');
 
-const TEST_PORT = 3199;
 let serverInstance = null;
 
 // Helper to create a test client connection
@@ -102,239 +106,12 @@ async function runMultiplayerTests() {
   console.log('🧪 [Multiplayer Tests] Starting Automated Test Suite');
   console.log('====================================================');
 
-  // Start dedicated test server on TEST_PORT
-  process.env.PORT = TEST_PORT.toString();
-  const appServer = http.createServer((req, res) => res.end('OK'));
-  const { WebSocketServer } = require('ws');
-  const wss = new WebSocketServer({ server: appServer });
-
-  // Attach server.js logic
+  // Start PRAWDZIWEGO serwera gry (pełny protokół — testy weryfikują realny
+  // multiplayer, nie atrapę). Krótki okres ochronny dla testu wygasania pokoju.
   const serverModule = require('../server');
-
-  await new Promise((resolve) => {
-    appServer.listen(TEST_PORT, '127.0.0.1', () => {
-      console.log(`Test server running on port ${TEST_PORT}`);
-      resolve();
-    });
-  });
-
-  // Attach message listener to test wss
-  wss.on('connection', (ws) => {
-    ws.isAlive = true;
-    const clientId = 'test_c_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
-    ws.clientId = clientId;
-
-    ws.send(JSON.stringify({
-      type: 'CONNECTED',
-      clientId: clientId,
-      serverVersion: '2.1.0'
-    }));
-
-    ws.on('message', (raw) => {
-      try {
-        const msg = JSON.parse(raw.toString());
-        // Handle using server.js routines
-        handleTestServerMessage(ws, msg, serverModule.rooms, serverModule.sessions);
-      } catch (e) {}
-    });
-
-    ws.on('close', () => {
-      handleTestServerDisconnect(ws, serverModule.rooms);
-    });
-  });
-
-  function handleTestServerMessage(ws, msg, rooms, sessions) {
-    const sessionToken = (msg.sessionToken || ws.sessionToken || 'sess_' + Date.now()).toString();
-    ws.sessionToken = sessionToken;
-
-    switch (msg.type) {
-      case 'CREATE_ROOM': {
-        const roomId = serverModule.normalizeRoomCode(msg.roomName ? 'WF-TEST' : 'WF-' + Math.random().toString(36).substring(2, 6).toUpperCase()) || 'WF-TEST';
-        const newRoom = {
-          id: roomId,
-          name: msg.roomName || 'Pokój Testowy',
-          password: msg.password || null,
-          hostId: ws.clientId,
-          status: 'LOBBY',
-          turnDuration: msg.turnDuration || 180,
-          startMode: msg.startMode || 'STABLE_START',
-          maxPlayers: 32,
-          players: [{
-            id: ws.clientId,
-            sessionToken: sessionToken,
-            name: msg.playerName || 'Host',
-            countryId: msg.countryId || 'POL',
-            isHost: true,
-            ready: true,
-            connected: true,
-            disconnectedAt: null,
-            disconnectTimer: null,
-            ws: ws
-          }],
-          state: null,
-          chatHistory: []
-        };
-        rooms.set(roomId, newRoom);
-        ws.currentRoomId = roomId;
-
-        sessions.set(sessionToken, {
-          sessionToken,
-          playerId: ws.clientId,
-          name: newRoom.players[0].name,
-          currentRoomId: roomId,
-          lastSeen: Date.now()
-        });
-
-        ws.send(JSON.stringify({
-          type: 'ROOM_CREATED',
-          room: sanitize(newRoom),
-          clientId: ws.clientId,
-          assignedCountry: newRoom.players[0].countryId
-        }));
-        break;
-      }
-
-      case 'JOIN_ROOM': {
-        const normalized = serverModule.normalizeRoomCode(msg.roomId);
-        if (!normalized) {
-          ws.send(JSON.stringify({ type: 'ERROR', code: 'INVALID_ROOM_CODE', message: 'Nieprawidłowy kod pokoju' }));
-          return;
-        }
-
-        const room = rooms.get(normalized);
-        if (!room) {
-          ws.send(JSON.stringify({ type: 'ERROR', code: 'ROOM_NOT_FOUND', message: 'Nie znaleziono pokoju' }));
-          return;
-        }
-
-        const existingPlayer = room.players.find(p => p.sessionToken === sessionToken);
-        if (existingPlayer) {
-          if (existingPlayer.disconnectTimer) clearTimeout(existingPlayer.disconnectTimer);
-          existingPlayer.ws = ws;
-          existingPlayer.id = ws.clientId;
-          existingPlayer.connected = true;
-          existingPlayer.disconnectedAt = null;
-          ws.currentRoomId = normalized;
-
-          ws.send(JSON.stringify({
-            type: room.status === 'PLAYING' ? 'RECONNECTED' : 'ROOM_JOINED',
-            room: sanitize(room),
-            clientId: ws.clientId,
-            assignedCountry: existingPlayer.countryId,
-            isHost: existingPlayer.isHost
-          }));
-          return;
-        }
-
-        let chosenCountry = (msg.countryId || 'DEU').toUpperCase();
-        const taken = room.players.map(p => p.countryId);
-        if (taken.includes(chosenCountry)) {
-          const fallbacks = ['DEU', 'FRA', 'GBR', 'USA', 'JPN', 'CHN', 'ITA', 'ESP', 'CAN', 'BRA'];
-          chosenCountry = fallbacks.find(f => !taken.includes(f)) || 'CHE';
-        }
-
-        const playerObj = {
-          id: ws.clientId,
-          sessionToken: sessionToken,
-          name: msg.playerName || 'Gracz',
-          countryId: chosenCountry,
-          isHost: false,
-          ready: false,
-          connected: true,
-          disconnectedAt: null,
-          disconnectTimer: null,
-          ws: ws
-        };
-
-        room.players.push(playerObj);
-        ws.currentRoomId = normalized;
-
-        sessions.set(sessionToken, {
-          sessionToken,
-          playerId: ws.clientId,
-          name: playerObj.name,
-          currentRoomId: normalized,
-          lastSeen: Date.now()
-        });
-
-        ws.send(JSON.stringify({
-          type: 'ROOM_JOINED',
-          room: sanitize(room),
-          clientId: ws.clientId,
-          assignedCountry: chosenCountry
-        }));
-
-        // Broadcast
-        const bcast = JSON.stringify({ type: 'LOBBY_UPDATE', room: sanitize(room) });
-        room.players.forEach(p => { if (p.ws && p.ws !== ws) p.ws.send(bcast); });
-        break;
-      }
-
-      case 'SELECT_COUNTRY': {
-        const room = rooms.get(ws.currentRoomId);
-        if (!room) return;
-        const player = room.players.find(p => p.id === ws.clientId);
-        if (!player) return;
-
-        const target = (msg.countryId || '').toUpperCase();
-        const isTaken = room.players.some(p => p.id !== ws.clientId && p.countryId === target);
-        if (isTaken) {
-          ws.send(JSON.stringify({ type: 'ERROR', code: 'COUNTRY_TAKEN', message: 'Państwo zajęte' }));
-          return;
-        }
-        player.countryId = target;
-        ws.send(JSON.stringify({ type: 'SELECT_COUNTRY_SUCCESS', countryId: target }));
-        const bcast = JSON.stringify({ type: 'LOBBY_UPDATE', room: sanitize(room) });
-        room.players.forEach(p => { if (p.ws) p.ws.send(bcast); });
-        break;
-      }
-
-      case 'TOGGLE_READY': {
-        const room = rooms.get(ws.currentRoomId);
-        if (!room) return;
-        const player = room.players.find(p => p.id === ws.clientId);
-        if (player) {
-          player.ready = !player.ready;
-          const bcast = JSON.stringify({ type: 'LOBBY_UPDATE', room: sanitize(room) });
-          room.players.forEach(p => { if (p.ws) p.ws.send(bcast); });
-        }
-        break;
-      }
-
-      case 'START_GAME': {
-        const room = rooms.get(ws.currentRoomId);
-        if (!room) return;
-        const player = room.players.find(p => p.id === ws.clientId);
-        if (!player || !player.isHost) return;
-
-        room.status = 'PLAYING';
-        const bcast = JSON.stringify({ type: 'GAME_STARTED', room: sanitize(room), state: msg.initialState || { ok: true } });
-        room.players.forEach(p => { if (p.ws) p.ws.send(bcast); });
-        break;
-      }
-    }
-  }
-
-  function handleTestServerDisconnect(ws, rooms) {
-    if (!ws.currentRoomId) return;
-    const room = rooms.get(ws.currentRoomId);
-    if (!room) return;
-    const player = room.players.find(p => p.id === ws.clientId || p.sessionToken === ws.sessionToken);
-    if (!player) return;
-
-    player.connected = false;
-    player.disconnectedAt = Date.now();
-    player.ws = null;
-
-    // Grace timer (shorter in tests if needed, or 60s)
-    player.disconnectTimer = setTimeout(() => {
-      if (!player.connected) {
-        const idx = room.players.findIndex(p => p.sessionToken === player.sessionToken);
-        if (idx !== -1) room.players.splice(idx, 1);
-        if (room.players.length === 0) rooms.delete(room.id);
-      }
-    }, 500); // 500ms for test fast-forward
-  }
+  const srv = serverModule.startServer(0);
+  await new Promise((resolve) => srv.on('listening', resolve));
+  console.log(`Test server (real) running on port ${srv.address().port}`);
 
   function sanitize(room) {
     return {
@@ -442,8 +219,60 @@ async function runMultiplayerTests() {
     assert(!serverModule.rooms.has(testRoomId), 'Pokój powinien zostać usunięty z pamięci po opuszczeniu przez wszystkich graczy');
   });
 
+  await test('10. PEŁNA ROZGRYWKA E2E: komendy, autoryzacja, sync stanu, chat', async () => {
+    // Nowy pokój na pełną symulację partii
+    const host = await createTestClient(TEST_PORT);
+    host.send('CREATE_ROOM', { roomName: 'Partia E2E', countryId: 'POL', playerName: 'Gracz A' });
+    const created = await host.waitMessage(m => m.type === 'ROOM_CREATED');
+    const roomId2 = created.room.id;
+
+    const guest = await createTestClient(TEST_PORT);
+    guest.send('JOIN_ROOM', { roomId: roomId2, countryId: 'DEU', playerName: 'Gracz B' });
+    await guest.waitMessage(m => m.type === 'ROOM_JOINED');
+
+    guest.send('TOGGLE_READY');
+    host.send('START_GAME', { initialState: { currentTurn: 1, countries: {}, marker: 'e2e' } });
+    await host.waitMessage(m => m.type === 'GAME_STARTED');
+    const guestStart = await guest.waitMessage(m => m.type === 'GAME_STARTED');
+    assert(guestStart.state && guestStart.state.marker === 'e2e', 'Gość powinien otrzymać stan początkowy od hosta');
+
+    // Komenda gościa dla WŁASNEGO kraju -> broadcast do obu
+    guest.send('DISPATCH_COMMAND', { turn: 1, command: { type: 'SET_TAX_RATE', countryId: 'DEU', payload: { taxType: 'vatRate', rate: 22 } } });
+    const hostCmd = await host.waitMessage(m => m.type === 'COMMAND_BROADCAST' && m.command && m.command.type === 'SET_TAX_RATE');
+    const guestCmd = await guest.waitMessage(m => m.type === 'COMMAND_BROADCAST' && m.command && m.command.type === 'SET_TAX_RATE');
+    assert(hostCmd.senderCountryId === 'DEU', 'Host widzi komendę od gościa (DEU)');
+    assert(guestCmd.command.payload.rate === 22, 'Gość dostaje echo własnej komendy');
+
+    // Komenda gościa za OBCY kraj -> odrzucona (UNAUTHORIZED_COUNTRY)
+    guest.send('DISPATCH_COMMAND', { turn: 1, command: { type: 'SET_TAX_RATE', countryId: 'FRA', payload: {} } });
+    const unauthorized = await guest.waitMessage(m => m.type === 'ERROR' && m.code === 'UNAUTHORIZED_COUNTRY');
+    assert(!!unauthorized, 'Serwer blokuje rozkazy za obce państwo');
+
+    // Host synchronizuje stan po turze -> gość dostaje STATE_UPDATE
+    host.send('STATE_SYNC', { turn: 2, state: { currentTurn: 2, marker: 'e2e-t2', treasury: 123 } });
+    const stateUpdate = await guest.waitMessage(m => m.type === 'STATE_UPDATE');
+    assert(stateUpdate.turn === 2 && stateUpdate.state.marker === 'e2e-t2', 'Gość otrzymuje zsynchronizowany stan po turze');
+
+    // Chat globalny
+    host.send('SEND_CHAT', { channel: 'GLOBAL', text: 'Powodzenia!' });
+    const chat = await guest.waitMessage(m => m.type === 'CHAT_MESSAGE');
+    assert(chat.message.text === 'Powodzenia!' && chat.message.senderCountry === 'POL', 'Chat dociera do drugiego gracza z poprawnym nadawcą');
+
+    // Nie-host nie może zsynchronizować stanu (brak STATE_UPDATE po jego próbie)
+    guest.send('STATE_SYNC', { turn: 3, state: { marker: 'hack' } });
+    const noSync = await Promise.race([
+      host.waitMessage(m => m.type === 'STATE_UPDATE' && m.state.marker === 'hack').then(() => false),
+      new Promise(r => setTimeout(() => r(true), 600))
+    ]);
+    assert(noSync, 'STATE_SYNC od nie-hosta jest ignorowany (host-authoritative)');
+
+    host.close();
+    guest.close();
+    serverModule.rooms.delete(roomId2);
+  });
+
   // Close test server
-  appServer.close();
+  srv.close();
 
   // Summary
   const passedCount = results.filter(r => r.passed).length;

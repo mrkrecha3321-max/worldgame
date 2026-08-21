@@ -312,7 +312,7 @@
         mem.lastPortfolio = turnNumber;
         if (country.treasury > eco.gdpNominal * 0.12) {
           // Złoto jako rezerwa (0.2% - 0.8% PKB)
-          const goldBudget = Math.round(eco.gdpNominal * (0.002 + roll('goldamt') * 0.006));
+          const goldBudget = Math.min(Math.round(eco.gdpNominal * (0.002 + roll('goldamt') * 0.006)), 5000000000); // cap 5 mld
           window.WorldForge.Systems.Exchange.buyCommodity(country, 'gold', Math.max(100, Math.floor(goldBudget / 2450)));
         } else if (roll('stock') < 0.4 && country.treasury > eco.gdpNominal * 0.08) {
           // Akcje płacące dywidendę

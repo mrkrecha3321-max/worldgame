@@ -98,7 +98,10 @@
         const gdpPerCapita = cData.gdpPerCapita || Math.round(gdpNominal / Math.max(1, pop));
 
         const debtNominal = cData.debtNominal || Math.round(gdpNominal * ((cData.debtToGdp || 50) / 100));
-        const treasury = cData.treasury || Math.round(gdpNominal * 0.04);
+        // Cap płynnych rezerw startowych: nawet największe gospodarki (Chiny ~18 bln PKB)
+        // nie zaczynają z setkami miliardów gotówki do wydania od ręki — realnie budżet
+        // operacyjny państwa to ułamek PKB, a inwestycje finansuje się długiem.
+        const treasury = Math.min(cData.treasury || Math.round(gdpNominal * 0.04), 100000000000);
         const foreignReserves = cData.foreignReserves || Math.round(gdpNominal * 0.15);
 
         this.state.countries[id] = {

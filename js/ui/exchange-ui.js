@@ -94,7 +94,7 @@
                 const prev = ph.length > 1 ? ph[ph.length - 2] : cur;
                 const chg = prev > 0 ? ((cur - prev) / prev) * 100 : 0;
                 const cls = chg >= 0 ? 'text-positive' : 'text-negative';
-                return `<span class="font-mono ${cls}" style="font-size: 13px; font-weight: 700;">$${cur.toLocaleString('pl-PL')} <small>(${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%)</small> / ${activeCommodity.unit}</span>`;
+                return `<span class="font-mono ${cls}" style="font-size: 13px; font-weight: 700;">$${window.WorldForge.Systems.Exchange.displayPrice(activeCommodity).toLocaleString('pl-PL')} <small>(${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%)</small> / ${window.WorldForge.Systems.Exchange.unitLabel(activeCommodity)}</span>`;
               })()}
             </div>
             
@@ -133,7 +133,7 @@
                             <strong>${comm.icon} ${comm.name}</strong>
                             <div style="font-size: 9px; color: var(--text-muted);">${comm.unit}</div>
                           </td>
-                          <td class="font-mono text-positive">$${comm.currentPrice.toLocaleString('pl-PL')}</td>
+                          <td class="font-mono text-positive">$${window.WorldForge.Systems.Exchange.displayPrice(comm).toLocaleString('pl-PL')}<span style="color: var(--text-muted);"> / ${window.WorldForge.Systems.Exchange.unitLabel(comm)}</span></td>
                           <td class="font-mono">${F.number(owned, { rawText: true })}</td>
                           <td class="font-mono text-accent">${F.money(val, 'USD')}</td>
                           <td>
@@ -364,21 +364,21 @@
       const Ex = window.WorldForge.Systems.Exchange;
       const OZ = (window.WorldForge.Data.GoldReserves && window.WorldForge.Data.GoldReserves.OZ_PER_TONNE) || 32150.7;
       const isGold = commId === 'gold';
-      const defaultAmount = isGold ? 100000 : 1000;
+      const defaultAmount = isGold ? 5 : 1000; // tony dla złota
       const maxOrder = Ex.maxOrderAmount(item);
 
       window.WorldForge.UI.Modal.show({
         title: `🥇 Zakup na Giełdzie: ${item.name}`,
         contentHtml: `
           <div style="display: flex; flex-direction: column; gap: 10px;">
-            <div style="font-size: 11px; color: var(--text-secondary);">Aktualny kurs rynkowy: <strong class="font-mono text-positive">$${item.currentPrice.toLocaleString('pl-PL')}</strong> za 1 ${item.unit}</div>
+            <div style="font-size: 11px; color: var(--text-secondary);">Aktualny kurs rynkowy: <strong class="font-mono text-positive">$${window.WorldForge.Systems.Exchange.displayPrice(item).toLocaleString('pl-PL')}</strong> za 1 ${Ex.unitLabel(item)}</div>
             <div class="slider-group">
-              <label style="font-size: 11px; font-weight: 500;">Ilość do zakupu (${item.unit}):</label>
-              <input type="number" id="ex-buy-amount" class="wf-input font-mono" value="${defaultAmount}" min="1" step="${isGold ? 10000 : 100}" />
+              <label style="font-size: 11px; font-weight: 500;">Ilość do zakupu (${Ex.unitLabel(item)}):</label>
+              <input type="number" id="ex-buy-amount" class="wf-input font-mono" value="${defaultAmount}" min="${isGold ? 0.5 : 1}" step="${isGold ? 0.5 : 100}" />
               <span style="font-size: 10px; color: var(--text-muted);">Środki w Skarbie: ${F.money(country.treasury, 'USD')}</span>
             </div>
             <div id="ex-buy-preview" style="background: var(--bg-panel-secondary); border: 1px solid var(--border); border-radius: var(--border-radius-xs); padding: 8px 10px; font-size: 11px;"></div>
-            ${isGold ? `<div style="font-size: 10px; color: var(--text-muted);">Głębokość rynku: rynek wchłania ${F.number(Math.floor(maxOrder / 2), { rawText: true })} oz (~${Math.floor(maxOrder / 2 / OZ)} t) na zlecenie z minimalnym wpływem. Zakupy CB innych państw też ruszają ceną.</div>` : ''}
+            ${isGold ? `<div style="font-size: 10px; color: var(--text-muted);">Głębokość rynku: bezbolesna absorpcja to ~150 t/mies.; maks. zlecenie to ${Ex.fmtQty(item, maxOrder)} — większy zrzut jednym zleceniem może załamać rynek (i Ciebie z nim).</div>` : ''}
           </div>
         `,
         buttons: [
@@ -388,8 +388,8 @@
             class: 'wf-btn-primary',
             autoClose: true,
             onClick: () => {
-              const amount = parseFloat(document.getElementById('ex-buy-amount')?.value || defaultAmount);
-              const res = Ex.buyCommodity(country, commId, amount);
+              const oz = Ex.inputToOz(item, document.getElementById('ex-buy-amount')?.value || defaultAmount);
+              const res = Ex.buyCommodity(country, commId, oz);
               if (!res.success) {
                 window.WorldForge.UI.Modal.showError('Transakcja Giełdowa Nieudana', res.reason);
               }
@@ -403,15 +403,15 @@
       const input = document.getElementById('ex-buy-amount');
       const preview = document.getElementById('ex-buy-preview');
       const updatePreview = () => {
-        const amt = parseFloat(input?.value || 0) || 0;
-        const impact = Ex.computeDepthImpact(item, amt);
-        const execPrice = item.currentPrice * (1 + impact);
-        const total = Math.round(amt * execPrice);
+        const oz = Ex.inputToOz(item, input?.value || 0);
+        const impact = Ex.computeDepthImpact(item, oz);
+        const execPricePerUnit = Ex.displayPrice(item) * (1 + impact);
+        const total = Math.round(oz * item.currentPrice * (1 + impact));
         if (preview) {
           preview.innerHTML = `
-            <div style="display:flex; justify-content: space-between;"><span>Szacowana cena wykonania:</span><strong class="font-mono text-negative">$${execPrice.toFixed(2)} ${impact > 0.005 ? `(+${(impact * 100).toFixed(1)}% wpływ)` : '(rynkowa)'}</strong></div>
+            <div style="display:flex; justify-content: space-between;"><span>Szacowana cena wykonania:</span><strong class="font-mono text-negative">$${execPricePerUnit.toLocaleString('pl-PL')}/${Ex.unitLabel(item)} ${impact > 0.005 ? `(+${(impact * 100).toFixed(1)}% wpływ)` : '(rynkowa)'}</strong></div>
             <div style="display:flex; justify-content: space-between;"><span>Łączny koszt:</span><strong class="font-mono">${F.money(total, 'USD')}</strong></div>
-            ${amt > maxOrder ? `<div class="text-negative" style="margin-top:4px;">⚠ Przekroczono limit zlecenia (${F.number(maxOrder, { rawText: true })}) — rynek odrzuci.</div>` : ''}
+            ${oz > maxOrder ? `<div class="text-negative" style="margin-top:4px;">⚠ Przekroczono limit zlecenia (${Ex.fmtQty(item, maxOrder)}) — rynek odrzuci.</div>` : ''}
           `;
         }
       };
@@ -435,12 +435,12 @@
         contentHtml: `
           <div style="display: flex; flex-direction: column; gap: 10px;">
             <div style="font-size: 11px; color: var(--text-secondary);">
-              Posiadasz: <strong class="font-mono text-accent">${F.number(owned, { rawText: true })} ${item.unit}</strong>
-              ${isGold ? ` <span style="color: var(--text-muted);">(${(owned / OZ).toFixed(1)} t rezerw narodowych)</span>` : ''}
+              Posiadasz: <strong class="font-mono text-accent">${isGold ? `${(owned / OZ).toFixed(1)} t rezerw narodowych` : `${F.number(owned, { rawText: true })} ${Ex.unitLabel(item)}`}</strong>
+              ${isGold ? ` <span style="color: var(--text-muted);">(${F.number(owned, { rawText: true })} oz)</span>` : ''}
             </div>
             <div class="slider-group">
-              <label style="font-size: 11px; font-weight: 500;">Ilość do sprzedaży (${item.unit}):</label>
-              <input type="number" id="ex-sell-amount" class="wf-input font-mono" value="${Math.min(owned, maxOrder)}" min="1" max="${owned}" />
+              <label style="font-size: 11px; font-weight: 500;">Ilość do sprzedaży (${Ex.unitLabel(item)}):</label>
+              <input type="number" id="ex-sell-amount" class="wf-input font-mono" value="${isGold ? Math.min(+((Math.min(owned, maxOrder) / OZ).toFixed(1)), +((owned / OZ).toFixed(1))) : Math.min(owned, maxOrder)}" min="${isGold ? 0.1 : 1}" max="${isGold ? (owned / OZ).toFixed(1) : owned}" step="${isGold ? 0.5 : 100}" />
             </div>
             <div id="ex-sell-preview" style="background: var(--bg-panel-secondary); border: 1px solid var(--border); border-radius: var(--border-radius-xs); padding: 8px 10px; font-size: 11px;"></div>
             <div id="ex-sell-warning"></div>
@@ -453,7 +453,7 @@
             class: 'wf-btn-primary',
             autoClose: true,
             onClick: () => {
-              const amount = parseFloat(document.getElementById('ex-sell-amount')?.value || owned);
+              const amount = Ex.inputToOz(item, document.getElementById('ex-sell-amount')?.value || owned);
               // Ostrzeżenie o wyprzedaży rezerw narodowych (>5% rezerw złota)
               if (isGold && amount > owned * 0.05) {
                 this.confirmGoldReserveSale(country, item, amount, owned, OZ, container);
@@ -474,19 +474,19 @@
       const preview = document.getElementById('ex-sell-preview');
       const warnEl = document.getElementById('ex-sell-warning');
       const updatePreview = () => {
-        const amt = parseFloat(input?.value || 0) || 0;
-        const impact = Ex.computeDepthImpact(item, amt);
-        const execPrice = item.currentPrice * (1 - impact);
-        const proceeds = Math.round(amt * execPrice);
+        const oz = Ex.inputToOz(item, input?.value || 0);
+        const impact = Ex.computeDepthImpact(item, oz);
+        const execPricePerUnit = Ex.displayPrice(item) * (1 - impact);
+        const proceeds = Math.round(oz * item.currentPrice * (1 - impact));
         if (preview) {
           preview.innerHTML = `
-            <div style="display:flex; justify-content: space-between;"><span>Szacowana cena wykonania:</span><strong class="font-mono text-negative">$${execPrice.toFixed(2)} ${impact > 0.005 ? `(-${(impact * 100).toFixed(1)}% wpływ)` : '(rynkowa)'}</strong></div>
+            <div style="display:flex; justify-content: space-between;"><span>Szacowana cena wykonania:</span><strong class="font-mono text-negative">$${execPricePerUnit.toLocaleString('pl-PL')}/${Ex.unitLabel(item)} ${impact > 0.005 ? `(-${(impact * 100).toFixed(1)}% wpływ)` : '(rynkowa)'}</strong></div>
             <div style="display:flex; justify-content: space-between;"><span>Wpływ do Skarbu:</span><strong class="font-mono text-positive">${F.money(proceeds, 'USD')}</strong></div>
-            ${amt > maxOrder ? `<div class="text-negative" style="margin-top:4px;">⚠ Limit zlecenia: ${F.number(maxOrder, { rawText: true })} — sprzedawaj partiami.</div>` : ''}
+            ${oz > maxOrder ? `<div class="text-negative" style="margin-top:4px;">⚠ Limit zlecenia: ${Ex.fmtQty(item, maxOrder)} — sprzedawaj partiami.</div>` : ''}
           `;
         }
-        if (warnEl && isGold && amt > owned * 0.05) {
-          const share = ((amt / owned) * 100).toFixed(0);
+        if (warnEl && isGold && oz > owned * 0.05) {
+          const share = ((oz / owned) * 100).toFixed(0);
           warnEl.innerHTML = `<div style="background: var(--warning-bg); border: 1px solid var(--warning-border); color: var(--warning); border-radius: var(--border-radius-xs); padding: 7px 9px; font-size: 10.5px; line-height: 1.45;">
             ⚠ Sprzedajesz <strong>${share}% rezerw narodowych</strong>. Rezerwy podpierają kurs Twojej waluty i rating kredytowy — większa wyprzedaż (kumulatywnie >20%/12 m-cy) osłabi kurs i podniesie inflację, a >80% wywoła Kryzys Zaufania do Waluty.
           </div>`;
@@ -509,8 +509,8 @@
         title: '⚠ Potwierdź Sprzedaż Rezerw Złota',
         contentHtml: `
           <div style="display:flex; flex-direction: column; gap: 8px; font-size: 11.5px; color: var(--text-secondary); line-height: 1.5;">
-            <p style="margin:0;">Zlecenie: <strong>${(amount / OZ).toFixed(1)} t</strong> (${F.number(amount, { rawText: true })} oz) — <strong class="text-warning">${share.toFixed(0)}% rezerw narodowych</strong>.</p>
-            <p style="margin:0;">Szacowana cena po Twoim zleceniu: <strong class="font-mono text-negative">$${execPrice.toFixed(0)}/oz</strong> (rynkowa: $${item.currentPrice.toFixed(0)}). Wpływ do skarbca: <strong class="font-mono">${F.money(proceeds, 'USD')}</strong>.</p>
+            <p style="margin:0;">Zlecenie: <strong>${(amount / OZ).toFixed(1)} t</strong> — <strong class="text-warning">${share.toFixed(0)}% rezerw narodowych</strong>.</p>
+            <p style="margin:0;">Szacowana cena po Twoim zleceniu: <strong class="font-mono text-negative">$${(execPrice * OZ / 1000000).toFixed(1)} mln/t</strong> (rynkowa: $${(item.currentPrice * OZ / 1000000).toFixed(1)} mln/t). Wpływ do skarbca: <strong class="font-mono">${F.money(proceeds, 'USD')}</strong>.</p>
             <p style="margin:0; color: var(--warning);">Rezerwy złota podpierają kurs waluty, inflację i rating państwa. Kumulatywna wyprzedaż ponad 20% rocznie osłabi złotego, ponad 50% — mocno podbije inflację, a ponad 80% wywoła kryzys zaufania do waluty (do +8 pp inflacji, spadek stabilności).</p>
           </div>
         `,

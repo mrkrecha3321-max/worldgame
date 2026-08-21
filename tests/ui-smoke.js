@@ -234,13 +234,13 @@ function assert(condition, label) {
   let sellRes = ExSys.sellCommodity(cG, 'gold', 2000000); // 2M oz — duże, ale w limicie zlecenia
   assert(sellRes.success === true && gold.currentPrice < priceAfterBuy, `Sprzedaż OBIŻA cenę ($${priceAfterBuy} → $${gold.currentPrice}) — brak trwałej "zamrożonej" podwyżki`);
 
-  // Regresja do wartości fundamentalnej: sztuczne odkształcenie +30%, 12 tur → ceny wracają ku bazie
-  gold.currentPrice = Math.round(gold.basePrice * 1.30);
-  const pumped = gold.currentPrice;
-  for (let i = 0; i < 12; i++) { TE.nextTurn(); await sleep(25); }
-  const reverted = gold.currentPrice;
-  const gapClosed = (pumped - reverted) / (pumped - gold.basePrice);
-  assert(gapClosed > 0.25, `Regresja do wartości fundamentalnej: ${Math.round(gapClosed * 100)}% odkształcenia cofnięte po 12 m-cach ($${pumped} → $${reverted}, baza $${gold.basePrice})`);
+  // Regresja do wartości fundamentalnej: sztuczne ZANIŻENIE -30%, 3 tury → cena odbija ku bazie
+  gold.currentPrice = Math.round(gold.basePrice * 0.70);
+  const dipped = gold.currentPrice;
+  for (let i = 0; i < 3; i++) { TE.nextTurn(); await sleep(25); }
+  const rebounded = gold.currentPrice;
+  const gapClosed = (rebounded - dipped) / Math.max(1, gold.basePrice - dipped);
+  assert(gapClosed > 0.15, `Regresja do wartości fundamentalnej: ${Math.round(gapClosed * 100)}% luka w górę zamknięta po 3 m-cach ($${dipped} → $${rebounded}, baza $${gold.basePrice})`);
   assert((gold.priceHistory || []).length >= Math.min(60, goldHistLen + 12) && gold.priceHistory[gold.priceHistory.length - 1] === gold.currentPrice, `Historia cen aktualizuje się co turę (${goldHistLen} → ${gold.priceHistory.length} wpisów, limit 60, ostatni = cena bieżąca)`);
 
   // Wykres świecowy: 2 kolory i wąskie świece
@@ -298,7 +298,7 @@ function assert(condition, label) {
 
   // Rezerwy realne 2026 (stan po wczytaniu slot2 — rezerwy z migracji/init v3)
   const usaGold = st13.countries.USA?.portfolio?.commodities?.gold || 0;
-  assert(usaGold > (7000 * OZ_T) && usaGold < (9000 * OZ_T), `Rezerwy USA wg danych 2026: ${(usaGold / OZ_T).toFixed(0)} t (realia: 8 133 t)`);
+  assert(usaGold > (7000 * OZ_T) && usaGold < (8700 * OZ_T), `Rezerwy USA wg danych 2026: ${(usaGold / OZ_T).toFixed(0)} t (realia: 8 133 t)`);
   assert((c13.portfolio.commodities.gold || 0) > (400 * OZ_T), `Rezerwy Polski: ${((c13.portfolio.commodities.gold || 0) / OZ_T).toFixed(0)} t (realia: ~570 t)`);
 
   // Kopalnia: emisja obligacji pod budowę + wymuszenie własności państwowej
@@ -329,11 +329,11 @@ function assert(condition, label) {
 
   // Limit zlecenia: maks. 2x głębokość (~300 t) na zlecenie
   const maxOz = WF.Systems.Exchange.maxOrderAmount(goldItem13);
-  assert(maxOz > (250 * OZ_T) && maxOz < (320 * OZ_T), `Limit zlecenia = 2× głębokość rynku (${(maxOz / OZ_T).toFixed(0)} t złota maks. na zlecenie — większe partiami)`);
+  assert(maxOz > (1700 * OZ_T) && maxOz < (1900 * OZ_T), `Limit zlecenia = 12× głębokość rynku (${(maxOz / OZ_T).toFixed(0)} t złota maks. — megazrzut jednym zleceniem możliwy)`);
   // Krzywa głębokości: 1000 t -> impact ~42% (krach), 150 t -> ~3.4% (łagodne wchłonięcie)
   const impact1000 = WF.Systems.Exchange.computeDepthImpact(goldItem13, Math.floor(1000 * OZ_T));
   const impact150 = WF.Systems.Exchange.computeDepthImpact(goldItem13, Math.floor(150 * OZ_T));
-  assert(impact1000 > 0.35, `Zrzut 1000 t jednym zleceniem = krach (-${(impact1000 * 100).toFixed(0)}% ceny)`);
+  assert(impact1000 > 0.55, `Zrzut 1000 t jednym zleceniem = KRACH (-${(impact1000 * 100).toFixed(0)}% ceny)`);
   assert(impact150 < 0.06, `150 t wchłania łagodnie (-${(impact150 * 100).toFixed(1)}%)`);
 
   // Tracker wyprzedaży

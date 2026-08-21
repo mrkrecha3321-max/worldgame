@@ -26,18 +26,54 @@
     /**
      * Krzywa wpływu zlecenia na rynek (market depth).
      * r = wielkość zlecenia / miesięczna głębokość rynku aktywa.
-     * impact ≈ 3.4% przy r=1 (150 t), ~8.6% przy r=2 (300 t, kontagion), ~18% przy r=3.3 (500 t), ~42% przy r=6.7 (zrzut 1000 t).
+     * impact ≈ 3.6% przy r=1 (150 t), ~9.4% przy r=2 (300 t), ~66% przy r=6.7
+     * (zrzut 1000 t = krach), maks. 80% przy megazrzutach — można realnie
+     * ZAŁAMAĆ rynek jednym zleceniem.
      */
     computeDepthImpact(item, amount) {
       if (!item || !amount || amount <= 0) return 0;
       const depth = item.marketDepthOz || Math.max(1, 2500000000 / (item.currentPrice || 100));
       const r = amount / depth;
-      return Math.min(0.60, 0.025 * r + 0.009 * r * r);
+      return Math.min(0.80, 0.025 * r + 0.011 * r * r);
     },
 
     maxOrderAmount(item) {
       const depth = item.marketDepthOz || Math.max(1, 2500000000 / (item.currentPrice || 100));
-      return Math.floor(depth * 2.0); // maks. 2× głębokość na zlecenie — większe wolumeny partiami
+      return Math.floor(depth * 12); // maks. 12× głębokość (~1 800 t złota) — megazrzut jednym zleceniem
+    },
+
+    /** Aktywa notowane w tonach (UI i komunikaty), wewnętrznie uncje. */
+    TON_BASED_IDS: ['gold', 'silver'],
+    OZ_PER_TONNE: 32150.7,
+
+    isTonBased(item) {
+      return !!item && (item.tonBased === true || this.TON_BASED_IDS.includes(item.id));
+    },
+
+    /** Cena wyświetlana: za tonę dla kruszców, inaczej za jednostkę. */
+    displayPrice(item) {
+      if (!item) return 0;
+      const p = (item.currentPrice !== undefined) ? item.currentPrice : item.sharePrice;
+      return this.isTonBased(item) ? p * this.OZ_PER_TONNE : p;
+    },
+
+    /** Etykieta jednostki wyświetlana graczowi. */
+    unitLabel(item) {
+      return this.isTonBased(item) ? 't' : (item.unit || 'jedn.');
+    },
+
+    /** Format wolumenu dla komunikatów: tony dla kruszczy. */
+    fmtQty(item, amount) {
+      const F = window.WorldForge.Format;
+      if (this.isTonBased(item)) {
+        return `${F.number(amount / this.OZ_PER_TONNE, { rawText: true })} t`;
+      }
+      return `${F.number(amount, { rawText: true })} ${item.unit || 'jedn.'}`;
+    },
+
+    /** Przelicz wejście gracza (Tony) na uncje wewnętrzne. */
+    inputToOz(item, value) {
+      return this.isTonBased(item) ? Math.round((parseFloat(value) || 0) * this.OZ_PER_TONNE) : Math.round(parseFloat(value) || 0);
     },
 
     /**
@@ -97,7 +133,7 @@
       // Limit wolumenu: rynek nie wchłonie wszystkiego jednym zleceniem
       const maxOrder = this.maxOrderAmount(item);
       if (cleanAmount > maxOrder) {
-        return { success: false, reason: `Rynek nie wchłonie ${F.number(cleanAmount, { rawText: true })} ${item.unit} jednym zleceniem (maks. ${F.number(maxOrder, { rawText: true })}). Realizuj partiami.` };
+        return { success: false, reason: `Rynek nie wchłonie ${this.fmtQty(item, cleanAmount)} jednym zleceniem (maks. ${this.fmtQty(item, maxOrder)}). Realizuj partiami.` };
       }
 
       // Cena wykonania z wpływem na rynek (duże zakupu podbijają cenę przeciwko Tobie)
@@ -131,7 +167,7 @@
       window.WorldForge.Core.GameState.addNotification(
         'success',
         'Zakup na Giełdzie Towarowej',
-        `Zakupiono ${F.number(cleanAmount, { rawText: true })} ${item.unit} ${item.name} za kwotę ${F.money(totalCost, 'USD')}.`,
+        `Zakupiono ${this.fmtQty(item, cleanAmount)} ${item.name} za kwotę ${F.money(totalCost, 'USD')}.`,
         country.id
       );
 
@@ -159,7 +195,7 @@
       // Limit wolumenu: rynek nie wchłonie wszystkiego jednym zleceniem
       const maxOrder = this.maxOrderAmount(item);
       if (cleanAmount > maxOrder) {
-        return { success: false, reason: `Rynek nie wchłonie ${F.number(cleanAmount, { rawText: true })} ${item.unit} jednym zleceniem (maks. ${F.number(maxOrder, { rawText: true })}). Sprzedawaj partiami albo w kontraktach.` };
+        return { success: false, reason: `Rynek nie wchłonie ${this.fmtQty(item, cleanAmount)} jednym zleceniem (maks. ${this.fmtQty(item, maxOrder)}). Sprzedawaj partiami albo w kontraktach.` };
       }
 
       const impact = this.computeDepthImpact(item, cleanAmount);
@@ -182,7 +218,7 @@
       window.WorldForge.Core.GameState.addNotification(
         'info',
         'Sprzedaż na Giełdzie Towarowej',
-        `Upłynniono ${F.number(cleanAmount, { rawText: true })} ${item.unit} ${item.name}. Wpływ do Skarbu: ${F.money(totalProceeds, 'USD')}.`,
+        `Upłynniono ${this.fmtQty(item, cleanAmount)} ${item.name}. Wpływ do Skarbu: ${F.money(totalProceeds, 'USD')}.`,
         country.id
       );
 
