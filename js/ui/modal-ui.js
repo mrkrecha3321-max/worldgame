@@ -42,11 +42,18 @@
         btn.className = `wf-btn ${btnConfig.class || 'wf-btn-secondary'}`;
         btn.textContent = btnConfig.text;
         btn.onclick = () => {
+          // Zapamiętujemy otwarty modal PRZED onClick. Jeśli onClick otworzył
+          // inny modal (potwierdzenie, błąd), NIE zamykamy go — wcześniej
+          // autoClose zamykał świeżo otwarty modal potwierdzenia/błędu.
+          const modalBefore = document.getElementById('active-wf-modal');
           if (btnConfig.onClick) {
             btnConfig.onClick();
           }
           if (btnConfig.autoClose !== false) {
-            this.close();
+            const modalNow = document.getElementById('active-wf-modal');
+            if (!modalNow || modalNow === modalBefore) {
+              this.close();
+            }
           }
         };
         footer.appendChild(btn);
