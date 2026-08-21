@@ -131,7 +131,7 @@
                         <tr style="background: ${isSelected ? 'var(--bg-panel-hover)' : 'transparent'}; cursor: pointer;" class="row-select-comm" data-comm-id="${comm.id}">
                           <td>
                             <strong>${comm.icon} ${comm.name}</strong>
-                            <div style="font-size: 9px; color: var(--text-muted);">${comm.unit}</div>
+                            <div style="font-size: 9px; color: var(--text-muted);">${window.WorldForge.Systems.Exchange.unitLabel(comm) === 't' ? 'tona (t)' : comm.unit}</div>
                           </td>
                           <td class="font-mono text-positive">$${window.WorldForge.Systems.Exchange.displayPrice(comm).toLocaleString('pl-PL')}<span style="color: var(--text-muted);"> / ${window.WorldForge.Systems.Exchange.unitLabel(comm)}</span></td>
                           <td class="font-mono">${F.number(owned, { rawText: true })}</td>
@@ -225,6 +225,15 @@
       const history = fullHistory.slice(-30);
       if (history.length < 2) return '';
 
+      const Ex = window.WorldForge.Systems.Exchange;
+      const conv = Ex.isTonBased(item) ? Ex.OZ_PER_TONNE : 1;
+      const fmtP = (p) => {
+        const d = p * conv;
+        if (d >= 1e6) return (d / 1e6).toFixed(1) + ' mln';
+        if (d >= 1000) return (d / 1e3).toFixed(1) + 'k';
+        return d.toFixed(conv > 1 ? 0 : 1);
+      };
+
       const currentPrice = (item.currentPrice !== undefined) ? item.currentPrice : item.sharePrice;
 
       const padL = 8;
@@ -239,8 +248,10 @@
 
       const n = history.length;
       const slot = chartW / n;
-      const gap = Math.min(3, slot * 0.25);
-      const barWidth = Math.max(1.5, slot - gap); // wąskie świece dopasowane do szerokości
+      // Świece ZAWSZE wąskie: maks. 12px i wyśrodkowane w swoim slocie
+      // (przy krótkiej historii nie rozciągają się na pół ekranu)
+      const barWidth = Math.min(12, Math.max(1.5, slot * 0.75));
+      const gap = Math.max(1.5, (slot - barWidth) / 2);
 
       const yOf = (price) => padY + chartH - ((price - minPrice) / range) * chartH;
 
@@ -257,7 +268,7 @@
       for (const pl of priceLines) {
         const y = Math.round(yOf(pl.price)) + 0.5;
         gridHtml += `<line x1="${padL}" y1="${y}" x2="${padL + chartW}" y2="${y}" stroke="${pl.color}" stroke-width="0.75" stroke-dasharray="3 3" ${pl.label === 'teraz' ? '' : 'opacity="0.6"'} />`;
-        labelsHtml += `<text x="${padL + chartW + 4}" y="${y + 3}" font-size="8.5" font-family="var(--font-mono)" fill="${pl.label === 'teraz' ? 'var(--accent)' : 'var(--text-muted)'}">${pl.price >= 1000 ? (pl.price / 1000).toFixed(1) + 'k' : pl.price.toFixed(1)}</text>`;
+        labelsHtml += `<text x="${padL + chartW + 4}" y="${y + 3}" font-size="8.5" font-family="var(--font-mono)" fill="${pl.label === 'teraz' ? 'var(--accent)' : 'var(--text-muted)'}">${fmtP(pl.price)}</text>`;
       }
 
       history.forEach((price, idx) => {
@@ -270,7 +281,7 @@
         const up = close >= open;
         const color = up ? 'var(--positive)' : 'var(--negative)';
 
-        const x = padL + idx * slot + gap / 2;
+        const x = padL + idx * slot + gap;
         const yHigh = yOf(high);
         const yLow = yOf(low);
         const yOpen = yOf(open);
@@ -279,7 +290,7 @@
         const candleTop = Math.min(yOpen, yClose);
         const candleHeight = Math.max(1.2, Math.abs(yClose - yOpen));
 
-        const candleTitle = `O: ${open.toFixed(2)} | C: ${close.toFixed(2)} | ${up ? '▲ +' : '▼ '}${(((close - open) / Math.max(1e-9, open)) * 100).toFixed(2)}%`;
+        const candleTitle = `O: ${fmtP(open)} | C: ${fmtP(close)} /${Ex.unitLabel(item)} | ${up ? '▲ +' : '▼ '}${(((close - open) / Math.max(1e-9, open)) * 100).toFixed(2)}%`;
 
         candlesHtml += `
           <g>
