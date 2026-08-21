@@ -16,9 +16,17 @@ NAJSZYBCIEJ (podwójny klik):
 
   3. Koniec grania?  →  ZATRZYMAJ-SERWER.bat  (albo zamknij okno serwera)
 
-MULTIPLAYER Z KOLEGĄ:
+MULTIPLAYER Z KOLEGĄ — AUTOMATYCZNIE (zalecane):
 ────────────────────────────────────────────────────────────
-  W TYM SAMYM SIECIACH (LAN / ten sam Wi-Fi):
+  GRA-Z-KOLEGA.bat  ← podwójny klik i gotowe!
+  • sam startuje serwer ORAZ tunel Cloudflare,
+  • po ~10-60 s POKAZUJE I KOPIUJE DO SCHOWKA publiczny link
+    (też zapisuje go w pliku LINK-DO-GRY.txt),
+  • Ty tylko wklejasz link koledze (Ctrl+V), on go otwiera,
+  • Ty: Tryb Wieloosobowy → Utwórz pokój → daj mu kod WF-XXXX.
+  (Pierwsze uruchomienie pobiera cloudflared — do ok. 1 minuty.)
+
+RĘCZNIE, BEZ TUNELU (W TYM SAMYM SIECIACH / LAN / Wi-Fi):
     Kolega otwiera w przeglądarce:  http://TWOJE-IP:8080
     (Twoje IP sprawdzisz komendą  ipconfig  → IPv4)
     Wchodzi w "Tryb Wieloosobowy" → "Dołącz do pokoju" → Twój kod WF-XXXX.

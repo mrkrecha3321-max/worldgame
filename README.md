@@ -18,6 +18,11 @@ razem), startuje serwer i otwiera grę w osobnym oknie bez paska przeglądarki
 `URUCHOM-BEZ-KONSOLI.vbs`. Zatrzymanie: `ZATRZYMAJ-SERWER.bat`.
 Szczegóły: `JAK-URUCHOMIC.txt`.
 
+**Gra z kolegą przez internet: `GRA-Z-KOLEGA.bat`** — startuje serwer *i tunel
+Cloudflare*, po chwili **sam wyświetla i kopiuje do schowka publiczny link**
+(zapisany też w `LINK-DO-GRY.txt`) — wklejasz go koledze, on dołącza kodem
+pokoju `WF-XXXX`. Zero konfiguracji.
+
 ### Ręcznie (wszystkie systemy)
 
 ```bash
