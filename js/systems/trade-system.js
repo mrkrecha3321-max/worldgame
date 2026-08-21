@@ -247,9 +247,14 @@
 
         if (expProd && impProd) {
           // Dostawa ograniczona realnymi zapasami (nie "zapasy + produkcja z przyszłości")
-          // oraz wypłacalnością importera (nikt nie kupuje za pieniądze, których nie ma).
+          // oraz wypłacalnością importera: gotówka + kredyt kupiecki do 50% bieżących
+          // dochodów (państwa płacą za import także z bieżących wpływów podatkowych,
+          // nie tylko z rezerwy gotówki — inaczej każdy sezonowy spadek skarbca
+          // darłby kontrakty).
           const unitCostUsd = Math.max(1, Math.round(deal.agreedPrice * 1000));
-          const affordableAmount = Math.floor(Math.max(0, importer.treasury) / unitCostUsd);
+          const importerRevenue = importer.budget?.revenues?.total || 0;
+          const purchasingPowerUsd = Math.max(0, importer.treasury) + (importerRevenue * 0.5);
+          const affordableAmount = Math.floor(purchasingPowerUsd / unitCostUsd);
           let deliverAmount = Math.min(deal.monthlyAmount, expProd.stockpile || 0, affordableAmount);
 
           if (deliverAmount > 0) {

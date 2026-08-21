@@ -580,6 +580,12 @@
 
     addNotification(type, title, message, countryId = null, extra = {}) {
       if (!this.state) return;
+      // Skrzynka powiadomień należy do GRACZA. Zdarzenia 183 państw AI nie mogą
+      // jej zalewać (bufor 100 slotów). Boty, które chcą poinformować gracza,
+      // przekazują jawnie countryId === state.playerCountryId (np. oferty handlowe).
+      const owner = countryId || this.state.playerCountryId;
+      if (owner !== this.state.playerCountryId) return null;
+
       const record = {
         id: 'notif_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
         turn: this.state.time.currentTurn,

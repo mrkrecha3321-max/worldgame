@@ -20,6 +20,7 @@
       const resList = window.WorldForge.Data.Resources || [];
       const prod = country.production || {};
       const deals = state.bilateralDeals || [];
+      const offers = (state.incomingOffers || []).slice().sort((a, b) => b.createdTurn - a.createdTurn);
 
       container.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 12px;">
@@ -140,6 +141,42 @@
             </div>
           </div>
 
+          <!-- Incoming Offers from AI states -->
+          <div class="wf-card" style="border-left: 3px solid var(--warning);">
+            <div class="card-header">
+              <span class="card-title">🤝 Oferty Przychodzące od Państw (${offers.length})</span>
+              ${offers.length > 0 ? '<span style="font-size: 10px; color: var(--text-muted);">oferty wygasają po kilku turach</span>' : ''}
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto;">
+              ${offers.length > 0 ? offers.map(o => {
+                const from = state.countries[o.fromCountryId];
+                const resMeta = resList.find(r => r.id === o.resourceId);
+                const spot = state.globalMarket?.prices[o.resourceId] || 100;
+                const pricePct = ((o.price / spot - 1) * 100);
+                const goodDeal = o.direction === 'IMPORT' ? pricePct >= 3 : pricePct <= -3;
+                return `
+                  <div style="background: var(--bg-panel); padding: 8px 10px; border-radius: var(--border-radius-xs); border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                    <div>
+                      <div style="font-weight: 600; font-size: 11px;">
+                        ${from?.flag || '🏳️'} ${from?.namePl || o.fromCountryId}: ${o.direction === 'IMPORT' ? 'kupuje od Ciebie' : 'sprzedaje Ci'} ${resMeta?.icon || ''} ${resMeta?.name || o.resourceId}
+                      </div>
+                      <div style="font-size: 10px; color: var(--text-muted);">
+                        ${o.monthlyAmount.toLocaleString('pl-PL')} jedn./m-c @ <strong class="font-mono">$${o.price}</strong>
+                        <span class="${goodDeal ? 'text-positive' : 'text-warning'}">(${pricePct >= 0 ? '+' : ''}${pricePct.toFixed(1)}% vs spot)</span>
+                        • ${o.durationMonths} m-cy • wygasa za ${Math.max(0, o.expiresAtTurn - state.time.currentTurn)} tur
+                      </div>
+                    </div>
+                    <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                      <button class="wf-btn wf-btn-sm wf-btn-success btn-accept-offer" data-offer-id="${o.id}">✓ Akceptuj</button>
+                      <button class="wf-btn wf-btn-sm wf-btn-secondary btn-reject-offer" data-offer-id="${o.id}">✕</button>
+                    </div>
+                  </div>
+                `;
+              }).join('') : '<div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 10px;">Brak oczekujących ofert — państwa AI negocjują i odezwą się, gdy pojawią się interesy.</div>'}
+            </div>
+          </div>
+
           <!-- Active Bilateral Deals List -->
           <div class="wf-card">
             <div class="card-header">
@@ -238,6 +275,33 @@
           window.WorldForge.UI.Navigation.updateTopBar();
         };
       }
+
+      // Accept / reject incoming AI offers
+      container.querySelectorAll('.btn-accept-offer').forEach(btn => {
+        btn.onclick = () => {
+          const offerId = btn.getAttribute('data-offer-id');
+          const res = window.WorldForge.Core.Commands.dispatch({
+            type: 'ACCEPT_TRADE_OFFER',
+            countryId,
+            payload: { offerId }
+          });
+          if (!res.success) {
+            window.WorldForge.UI.Modal.showError('Nie Udało się Przyjąć Oferty', res.reason);
+          }
+          this.render(container);
+          window.WorldForge.UI.Navigation.updateTopBar();
+        };
+      });
+      container.querySelectorAll('.btn-reject-offer').forEach(btn => {
+        btn.onclick = () => {
+          window.WorldForge.Core.Commands.dispatch({
+            type: 'REJECT_TRADE_OFFER',
+            countryId,
+            payload: { offerId: btn.getAttribute('data-offer-id') }
+          });
+          this.render(container);
+        };
+      });
 
       // Cancel deal
       container.querySelectorAll('.btn-cancel-deal').forEach(btn => {

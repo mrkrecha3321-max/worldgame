@@ -171,11 +171,11 @@
 
           // Update histories
           eco.gdpHistory.push(eco.gdpNominal);
-          if (eco.gdpHistory.length > 60) eco.gdpHistory.shift();
+          if (eco.gdpHistory.length > 36) eco.gdpHistory.shift();
           eco.inflationHistory.push(eco.inflation);
-          if (eco.inflationHistory.length > 60) eco.inflationHistory.shift();
+          if (eco.inflationHistory.length > 36) eco.inflationHistory.shift();
           eco.unemploymentHistory.push(eco.unemployment);
-          if (eco.unemploymentHistory.length > 60) eco.unemploymentHistory.shift();
+          if (eco.unemploymentHistory.length > 36) eco.unemploymentHistory.shift();
 
         } catch (err) {
           console.error(`[EconomySystem] Error processing ${countryId}:`, err);

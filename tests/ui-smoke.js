@@ -273,7 +273,24 @@ function assert(condition, label) {
     assert(maxRes.success === false, `Limit poziomów fabryki działa (poziom 5 = MAX: ${maxRes.reason})`);
   }
 
-  console.log('\n====================================================');
+  console.log('\n--- 12. Żywotność botów AI (po 60+ turach autonomii) ---');
+  const stB = WF.Core.GameState.getState();
+  const bots = Object.values(stB.countries).filter(c => c.id !== stB.playerCountryId);
+  const botBuilders = bots.filter(c => (c.factories || []).length > 0);
+  const botBotDeals = (stB.bilateralDeals || []).filter(d => d.exporterId !== stB.playerCountryId && d.importerId !== stB.playerCountryId);
+  const botGold = bots.filter(c => (c.portfolio?.commodities?.gold || 0) > 0);
+  const worldBonds = bots.reduce((a, c) => a + (c.debt.bonds || []).length, 0);
+  const offerNews = (stB.notifications || []).some(n => (n.title || '').includes('Oferta Handlowa'));
+  const botNewsCount = (stB.notifications || []).filter(n => (n.title || '').includes('Aktywność Świata')).length;
+  const nanCountries = bots.filter(c => !isFinite(c.economy?.gdpNominal)).length;
+
+  assert(botBuilders.length >= 30, `Boty rozbudowują przemysł: ${botBuilders.length}/${bots.length} krajów ma fabryki (${botBuilders.reduce((a, c) => a + c.factories.length, 0)} zakładów)`);
+  assert(botBotDeals.length >= 5, `Boty zawierają umowy handlowe między sobą: ${botBotDeals.length} aktywnych`);
+  assert(botGold.length >= 2, `Boty inwestują w złoto na giełdzie: ${botGold.length} krajów`);
+  assert(worldBonds > bots.length * 3, `Boty zarządzają długiem (nowe emisje obligacji): ${worldBonds} bondów (> ${bots.length * 3} początkowych)`);
+  assert(offerNews || (stB.incomingOffers || []).length > 0, `Boty wysyłają graczowi oferty handlowe (news: ${offerNews}, oczekujące: ${(stB.incomingOffers || []).length})`);
+  assert(botNewsCount > 0, `Newsy o aktywności świata docierają do gracza: ${botNewsCount} w historii`);
+  assert(nanCountries === 0, `Zero krajów z rozwaloną ekonomią (NaN): ${nanCountries}`);
   console.log(`🏁 [UI Smoke] Wynik: ${checks - failures}/${checks} sprawdzeń zaliczonych, failów: ${failures}`);
   console.log('====================================================');
   serverInstance.close();

@@ -23,7 +23,7 @@
       });
     }
 
-    dispatch(command) {
+    dispatch(command, options = {}) {
       if (!command || !command.type) {
         return { success: false, reason: 'Nieprawidłowa struktura komendy: brak type' };
       }
@@ -72,7 +72,7 @@
         cmdRecord.success = !!(execResult && execResult.success);
         cmdRecord.result = execResult;
         
-        if (cmdRecord.success) {
+        if (cmdRecord.success && !options.silent) {
           this.history.push(cmdRecord);
           if (this.history.length > window.WorldForge.CONFIG.MAX_COMMAND_HISTORY) {
             this.history.shift();
@@ -475,6 +475,65 @@
 
       this.registerHandler('CANCEL_BILATERAL_DEAL', (state, payload, countryId) => {
         return window.WorldForge.Systems.Trade.cancelBilateralDeal(state, countryId, payload.dealId);
+      });
+
+      // 16b. Oferty handlowe od botów — akceptacja / odrzucenie przez gracza
+      this.registerHandler('ACCEPT_TRADE_OFFER', (state, payload, countryId, turn) => {
+        if (!Array.isArray(state.incomingOffers)) {
+          return { success: false, reason: 'Brak aktywnych ofert' };
+        }
+        const idx = state.incomingOffers.findIndex(o => o.id === payload.offerId);
+        if (idx === -1) return { success: false, reason: 'Nie znaleziono oferty (mogła wygasnąć)' };
+        const offer = state.incomingOffers[idx];
+        const bot = state.countries[offer.fromCountryId];
+        const player = state.countries[countryId];
+
+        if (offer.expiresAtTurn <= state.time.currentTurn) {
+          state.incomingOffers.splice(idx, 1);
+          return { success: false, reason: 'Oferta wygasła' };
+        }
+        if (!bot || !player) {
+          state.incomingOffers.splice(idx, 1);
+          return { success: false, reason: 'Państwo-sygnatariusz już nie istnieje w rozgrywce' };
+        }
+
+        let dealResult;
+        if (offer.direction === 'IMPORT') {
+          // Bot kupuje od gracza — gracz jest eksporterem (cena premium dla gracza)
+          dealResult = window.WorldForge.Systems.Trade.proposeBilateralDeal(state, countryId, {
+            importerId: bot.id,
+            resourceId: offer.resourceId,
+            monthlyAmount: offer.monthlyAmount,
+            agreedPrice: offer.price,
+            durationMonths: offer.durationMonths
+          }, turn);
+        } else {
+          // Bot sprzedaje graczowi — bot jest eksporterem (rabat dla gracza)
+          dealResult = window.WorldForge.Systems.Trade.proposeBilateralDeal(state, bot.id, {
+            importerId: countryId,
+            resourceId: offer.resourceId,
+            monthlyAmount: offer.monthlyAmount,
+            agreedPrice: offer.price,
+            durationMonths: offer.durationMonths
+          }, turn);
+        }
+
+        if (!dealResult.success) {
+          return { success: false, reason: `Kontrowersja przy podpisywaniu: ${dealResult.reason}` };
+        }
+
+        state.incomingOffers.splice(idx, 1);
+        return { success: true, data: dealResult.data };
+      });
+
+      this.registerHandler('REJECT_TRADE_OFFER', (state, payload, countryId) => {
+        if (!Array.isArray(state.incomingOffers)) {
+          return { success: false, reason: 'Brak aktywnych ofert' };
+        }
+        const idx = state.incomingOffers.findIndex(o => o.id === payload.offerId);
+        if (idx === -1) return { success: false, reason: 'Nie znaleziono oferty' };
+        const offer = state.incomingOffers.splice(idx, 1)[0];
+        return { success: true, data: { rejected: offer.id, from: offer.fromCountryId } };
       });
 
       // 17. Diplomacy & Military
