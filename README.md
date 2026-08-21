@@ -10,7 +10,15 @@ rozgrywka przez WebSocket. 184 państwa świata, dane bazowe 2025/2026.
 - Node.js **18+**
 - Przeglądarka desktopowa (Chrome / Edge / Firefox)
 
-### Uruchomienie (single player + multiplayer)
+### Uruchomienie — NAJSZYBCIEJ (Windows)
+
+**Podwójny klik: `URUCHOM-GRE.bat`** — sam instaluje zależności (za pierwszym
+razem), startuje serwer i otwiera grę w osobnym oknie bez paska przeglądarki
+(pełny ekran dla mapy, dodatkowo F11). Wariant bez żadnej konsoli:
+`URUCHOM-BEZ-KONSOLI.vbs`. Zatrzymanie: `ZATRZYMAJ-SERWER.bat`.
+Szczegóły: `JAK-URUCHOMIC.txt`.
+
+### Ręcznie (wszystkie systemy)
 
 ```bash
 npm install

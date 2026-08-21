@@ -1,0 +1,46 @@
+════════════════════════════════════════════════════════════
+  WORLDFORGE: NATIONS — JAK URUCHOMIĆ GRĘ (Windows)
+════════════════════════════════════════════════════════════
+
+NAJSZYBCIEJ (podwójny klik):
+────────────────────────────────────────────────────────────
+  1. URUCHOM-GRE.bat
+     • sam sprawza Node.js i instaluje zależności (tylko za 1. razem),
+     • startuje serwer w osobnym oknie "WORLDFORGE-SERWER"
+       (możesz je zminimalizować — NIE zamykaj, jeśli grasz),
+     • otwiera grę w OSOBNYM OKNIE bez paska przeglądarki
+       (pełny ekran dla mapy; dodatkowo F11 = pełny ekran).
+
+  2. Chcesz grać bez ŻADNEJ konsoli?  →  URUCHOM-BEZ-KONSOLI.vbs
+     (serwer działa ukryty w tle; zatrzymujesz go ZATRZYMAJ-SERWER.bat)
+
+  3. Koniec grania?  →  ZATRZYMAJ-SERWER.bat  (albo zamknij okno serwera)
+
+MULTIPLAYER Z KOLEGĄ:
+────────────────────────────────────────────────────────────
+  W TYM SAMYM SIECIACH (LAN / ten sam Wi-Fi):
+    Kolega otwiera w przeglądarce:  http://TWOJE-IP:8080
+    (Twoje IP sprawdzisz komendą  ipconfig  → IPv4)
+    Wchodzi w "Tryb Wieloosobowy" → "Dołącz do pokoju" → Twój kod WF-XXXX.
+
+  PRZEZ INTERNET (tunel Cloudflare):
+    W oknie serwera (albo konsoli) uruchom:
+        npx cloudflared tunnel --url http://localhost:8080
+    Wygenerowany link  https://coś.trycloudflare.com  wyślij kolegom.
+    Oni otwierają link → Tryb Wieloosobowy → kod pokoju WF-XXXX.
+    (Połączenie WebSocket działa automatycznie przez https)
+
+PANEL MISTRZA GIEŁDY (tylko dla Ciebie, ukryty):
+────────────────────────────────────────────────────────────
+  Otwórz grę z parametrem:  http://localhost:8080/?admin=arena2026
+  Klucz zmienisz w pliku  js/core/admin-panel.js  (ADMIN_KEY).
+
+WYMAGANIA:
+────────────────────────────────────────────────────────────
+  • Node.js 18+  (https://nodejs.org, wersja LTS)
+  • Windows 7/8/10/11 (Chrome lub Edge dla trybu app-okna)
+
+LINUKS / MAC:
+────────────────────────────────────────────────────────────
+  ./start-game.sh   (wymaga uprawnień: chmod +x start-game.sh)
+════════════════════════════════════════════════════════════
