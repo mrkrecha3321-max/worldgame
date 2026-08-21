@@ -370,6 +370,36 @@ function assert(condition, label) {
   // Erozja fundamentalna po zrzutach
   assert(goldItem13.basePrice < 4500 * 0.999 || goldItem13.basePrice0 !== undefined, `Nadpodaż obniża wartość fundamentalną złota (base: $${goldItem13.basePrice.toFixed(0)})`);
 
+  console.log('\n--- 14. UKRYTY panel administratora giełdy ---');
+  const Admin = WF.Admin;
+  assert(!!Admin, 'Moduł admin załadowany (niewidoczny bez klucza)');
+  assert(Admin.isUnlocked() === false && !d.getElementById('wf-admin-panel'), 'Bez ?admin=KLUCZ panel jest ukryty i zablokowany');
+  const badUnlock = Admin.unlock('zlyklucz');
+  assert(badUnlock === false && Admin.isUnlocked() === false, 'Zły klucz odrzucony');
+  Admin.unlock('arena2026');
+  assert(Admin.isUnlocked() === true, 'Odblokowanie poprawnym kluczem działa');
+
+  const admGold = WF.Core.GameState.getExchangeMarket().commodities.find(c => c.id === 'gold');
+  const admP0 = admGold.currentPrice;
+  const shockRes = Admin.applyShock('gold', -99);
+  assert(shockRes.success === true && admGold.currentPrice < admP0 * 0.02, `Szok -99% złota działa ($${admP0.toFixed(0)} → $${admGold.currentPrice.toFixed(0)})`);
+  Admin.applyShock('gold', 150);
+  assert(admGold.currentPrice > admP0 * 0.022, `Szok +150% działa od aktualnej ceny ($${admGold.currentPrice.toFixed(0)} = -99% ×2.5)`);
+  Admin.resetToBase('gold');
+  assert(Math.abs(admGold.currentPrice - (admGold.basePrice || admP0)) < 0.5, `Reset do wartości fundamentalnej ($${admGold.currentPrice.toFixed(0)})`);
+
+  const t0adm = WF.Core.GameState.getState().countries[POL].treasury;
+  Admin.addTreasury(100000000000);
+  assert(WF.Core.GameState.getState().countries[POL].treasury >= t0adm + 99.9e9, '+100 mld do skarbca działa');
+  const g0adm = WF.Core.GameState.getState().countries[POL].portfolio.commodities.gold || 0;
+  Admin.addGoldTonnes(100);
+  assert(WF.Core.GameState.getState().countries[POL].portfolio.commodities.gold >= g0adm + 100 * 32150, '+100 t złota do rezerw działa');
+  const stockShock = Admin.applyShock((WF.Core.GameState.getExchangeMarket().stocks[0] || {}).ticker, 42);
+  assert(stockShock.success === true, 'Szok działa też na akcjach spółek');
+
+  Admin.lock();
+  assert(Admin.isUnlocked() === false && !d.getElementById('wf-admin-panel'), 'Blokada zamyka i ukrywa panel');
+
   console.log(`🏁 [UI Smoke] Wynik: ${checks - failures}/${checks} sprawdzeń zaliczonych, failów: ${failures}`);
   console.log('====================================================');
   serverInstance.close();
