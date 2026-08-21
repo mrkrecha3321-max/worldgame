@@ -110,8 +110,8 @@
                       ` : ''}
                       ${!isBuilding && fac.level < 5
                         ? `
-                        <button class="wf-btn wf-btn-sm wf-btn-secondary btn-upgrade-factory" data-fac-id="${fac.id}">
-                          Modernizuj (${F.money(Math.round(300000000 * Math.pow(1.5, fac.level - 1)), 'USD')})
+                        <button class="wf-btn wf-btn-sm wf-btn-secondary btn-upgrade-factory" data-fac-id="${fac.id}" title="Koszt modernizacji do poziomu ${fac.level + 1}">
+                          Modernizuj • ${F.money(Math.round(300000000 * Math.pow(1.5, fac.level - 1)), 'USD')}
                         </button>` : (!isBuilding ? '<span class="wf-badge wf-badge-cyan" title="Osiągnięto maksymalny poziom">MAX</span>' : '')}
                     </div>
                   </div>
@@ -222,7 +222,7 @@
                 <strong style="font-size: 12px; color: var(--text-primary);">${ft.icon} ${ft.name}</strong>
                 <div style="font-size: 10px; color: var(--text-muted);">${ft.description}</div>
                 <div style="font-size: 10px; color: var(--text-secondary); margin-top: 2px;">
-                  Koszt: <strong class="text-positive">${F.money(ft.cost, 'USD')}</strong> • Czas budowy: <strong>${ft.constructionMonths} m-cy</strong> • Miejsca pracy: <strong>${ft.workersNeeded}</strong>
+                  Koszt: <strong class="text-positive build-cost" id="build-cost-${ft.id}">${F.money(ft.cost, 'USD')}</strong> • Czas budowy: <strong>${ft.constructionMonths} m-cy</strong> • Miejsca pracy: <strong>${ft.workersNeeded}</strong>
                 </div>
                 ${ft.isMine ? `
                 <div style="font-size: 10px; color: var(--accent); margin-top: 2px;">
@@ -251,12 +251,16 @@
         buttons: [{ text: 'Zamknij', class: 'wf-btn-secondary', autoClose: true }]
       });
 
+      // Zmiana modelu własności aktualizuje KOSZT na karcie (prywatny = 55%),
+      // przycisk pozostaje czysty — bez cen i nawiasów w etykiecie.
       const updateCosts = () => {
         const ownership = document.getElementById('factory-ownership-select')?.value || 'STATE';
-        document.querySelectorAll('.btn-submit-build-factory').forEach(btn => {
-          const ft = factoryTypes.find(t => t.id === btn.getAttribute('data-type-id'));
-          if (!ft) return;
-          btn.textContent = (ownership === 'PRIVATE') ? `Wybuduj (${F.money(Math.round(ft.cost * 0.55), 'USD')})` : `Wybuduj (${F.money(ft.cost, 'USD')})`;
+        factoryTypes.forEach(ft => {
+          const el = document.getElementById('build-cost-' + ft.id);
+          if (!el) return;
+          el.innerHTML = (ownership === 'PRIVATE')
+            ? `${F.money(Math.round(ft.cost * 0.55), 'USD')} <span style="font-weight:400; color: var(--text-muted);">(współfinansowanie prywatne)</span>`
+            : F.money(ft.cost, 'USD');
         });
       };
       document.getElementById('factory-ownership-select')?.addEventListener('change', updateCosts);

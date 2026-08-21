@@ -23,7 +23,7 @@
     },
     {
       id: 'factory_semiconductor_fab',
-      name: 'Zaawansowana Fabryka Półprzewodników (Fab)',
+      name: 'Zaawansowana Fabryka Półprzewodników',
       sector: 'semiconductors',
       icon: '💾',
       cost: 2500000000, // 2.5 mld USD
@@ -133,7 +133,7 @@
     // ═══════════ KOPALNIE ZŁOTA (produkcja trafia do rezerw państwa, NIE na rynek) ═══════════
     {
       id: 'mine_gold_medium',
-      name: 'Średnia Kopalnia Złota (Open-Pit)',
+      name: 'Średnia Kopalnia Złota (Odkrywkowa)',
       sector: 'gold_mining',
       icon: '🪙',
       cost: 8000000000, // 8 mld USD
@@ -142,12 +142,12 @@
       workersNeeded: 2800,
       inputsRequired: { energy: 40, machinery: 15 },
       aiscPerOz: 1900, // koszt całkowity wydobycia uncji
-      description: 'Odkrywkowa kopalnia rudy złota ze flotacją. Wydobywa 20 t złota rocznie bezpośrednio do rezerw państwa.',
+      description: 'Odkrywkowa kopalnia rudy złota z wzbogacaniem. Wydobywa 20 t złota rocznie bezpośrednio do rezerw państwa.',
       isMine: true
     },
     {
       id: 'mine_gold_large',
-      name: 'Duża Kopalnia Złota (Muruntau-Scale)',
+      name: 'Duża Kopalnia Złota (Światowej Klasy)',
       sector: 'gold_mining',
       icon: '⛏️',
       cost: 25000000000, // 25 mld USD
@@ -156,12 +156,12 @@
       workersNeeded: 8500,
       inputsRequired: { energy: 90, machinery: 40 },
       aiscPerOz: 1750,
-      description: 'Gigantyczny kompleks górniczy klasy uzbeckiego Muruntau. 50 t złota rocznie do skarbca państwa.',
+      description: 'Gigantyczny kompleks górniczy wzorowany na największych kopalniach świata. 50 t złota rocznie do skarbca państwa.',
       isMine: true
     },
     {
       id: 'mine_gold_mega',
-      name: 'Mega-Dystrykt Górniczy (Nevada-Scale)',
+      name: 'Mega-Dystrykt Górniczy (Rekordowa Wydajność)',
       sector: 'gold_mining',
       icon: '🏔️',
       cost: 50000000000, // 50 mld USD — najdroższa inwestycja w grze
@@ -170,7 +170,7 @@
       workersNeeded: 22000,
       inputsRequired: { energy: 200, machinery: 90, steel: 60 },
       aiscPerOz: 1600,
-      description: 'Konglomerat kopalń klasy Nevada Gold Mines (93 t/rok w realu). Po pełnych modernizacjach do ~500 t złota rocznie.',
+      description: 'Konglomerat dziesiątek kopalń o największej wydajności na świecie. Po pełnych modernizacjach do ~500 t złota rocznie.',
       isMine: true
     }
   ];
