@@ -17,10 +17,12 @@
         category: 'precious_metals',
         icon: '🥇',
         unit: 'uncja (oz)',
-        basePrice: 2450.0, // USD / oz
-        currentPrice: 2450.0,
-        priceHistory: [2410, 2425, 2440, 2450],
-        volatility: 0.025,
+        basePrice: 4500.0, // USD / oz — realia sierpień 2026 (spot ~$4,523; rok wcześniej $3,315)
+        currentPrice: 4523.0,
+        priceHistory: [3315, 3390, 3520, 3610, 3480, 3720, 3860, 3750, 4010, 4230, 4120, 4420, 4523],
+        volatility: 0.035,
+        marketDepthOz: 4823000, // ~150 t absorpcji miesięcznej bez >2.5% wpływu (realne zakupy CB ~72 t/m-c + inwestycyjne)
+        aiscPerOz: 1900, // średni all-in sustaining cost wydobycia 2026
         description: 'Globalna bezpieczna przystań i tarcza antyinflacyjna. Zwiększa rating państwa i stabilność rezerw walutowych.'
       },
       {
@@ -29,10 +31,11 @@
         category: 'precious_metals',
         icon: '🥈',
         unit: 'uncja (oz)',
-        basePrice: 29.5,
-        currentPrice: 29.5,
-        priceHistory: [28.5, 28.9, 29.2, 29.5],
-        volatility: 0.035,
+        basePrice: 67.0, // USD / oz — realia 2026
+        currentPrice: 67.0,
+        priceHistory: [30.5, 33.0, 38.0, 42.0, 47.5, 51.0, 49.0, 55.0, 58.5, 62.0, 60.0, 65.5, 67.0],
+        volatility: 0.045,
+        marketDepthOz: 24000000,
         description: 'Kruszec o kluczowym znaczeniu dla fotowoltaiki, elektroniki i zaawansowanego przemysłu.'
       },
       {
@@ -43,6 +46,7 @@
         unit: 'baryłka (bbl)',
         basePrice: 78.0,
         currentPrice: 78.0,
+        marketDepthUnits: 60000000, // baryłek/mies. płynnej absorpcji
         priceHistory: [82.0, 80.5, 79.0, 78.0],
         volatility: 0.045,
         description: 'Podstawowy wskaźnik cen energii i surowców na rynkach światowych.'

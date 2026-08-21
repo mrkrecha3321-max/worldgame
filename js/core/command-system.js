@@ -297,7 +297,8 @@
         // Model własności: państwowy (pełny koszt, miesięczna dywidenda dla skarbu)
         // lub prywatny (55% kosztu — resztę współfinansuje sektor prywatny,
         // ale zakład nie odprowadza dywidendy do Skarbu Państwa).
-        const ownership = (payload.ownership === 'PRIVATE') ? 'PRIVATE' : 'STATE';
+        // Kopalnie złota zawsze państwowe — kruszec trafia do rezerw banku centralnego.
+        const ownership = (typeMeta.isMine || payload.ownership !== 'PRIVATE') ? 'STATE' : 'PRIVATE';
         const cost = (ownership === 'PRIVATE') ? Math.round(typeMeta.cost * 0.55) : typeMeta.cost;
         if (country.treasury < cost) {
           return { success: false, reason: `Niewystarczające środki w Skarbie Państwa (wymagane ${F.money(cost, 'USD')})` };
@@ -318,6 +319,8 @@
           remainingMonths: typeMeta.constructionMonths,
           totalConstructionMonths: typeMeta.constructionMonths,
           ownership: ownership, // 'STATE' (dywidenda) or 'PRIVATE' (taniej, bez dywidendy)
+          isMine: !!typeMeta.isMine,
+          aiscPerOz: typeMeta.aiscPerOz || 0,
           startedTurn: turn
         };
 
@@ -539,6 +542,25 @@
       // 17. Diplomacy & Military
       this.registerHandler('DIPLOMATIC_ACTION', (state, payload, countryId, turn) => {
         return window.WorldForge.Systems.Diplomacy.performAction(state, countryId, payload, turn);
+      });
+
+      this.registerHandler('MINE_TOGGLE', (state, payload, countryId) => {
+        const country = state.countries[countryId];
+        if (!country.factories) return { success: false, reason: 'Brak zakładów' };
+        const mine = country.factories.find(f => f.id === payload.mineId && f.isMine);
+        if (!mine) return { success: false, reason: 'Nie znaleziono kopalni' };
+
+        if (mine.status === 'PAUSED') {
+          if (country.treasury < (mine.lastMonthlyCost || 1000000) * 1.5) {
+            return { success: false, reason: 'Skarb Państwa nie ma środków na wznowienie wydobycia (koszt operacyjny + bufor).' };
+          }
+          mine.status = 'ACTIVE';
+          return { success: true, data: { mineId: mine.id, status: 'ACTIVE' } };
+        } else if (mine.status === 'ACTIVE') {
+          mine.status = 'PAUSED';
+          return { success: true, data: { mineId: mine.id, status: 'PAUSED' } };
+        }
+        return { success: false, reason: `Kopalnia w stanie ${mine.status} (budowa/wygaszenie)` };
       });
 
       this.registerHandler('SET_MILITARY_CONFIG', (state, payload, countryId) => {

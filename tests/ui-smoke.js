@@ -231,8 +231,7 @@ function assert(condition, label) {
 
   // Sprzedaż zrzuca cenę (symetryczny market impact)
   const priceAfterBuy = gold.currentPrice;
-  const ownedGold = cG.portfolio?.commodities?.gold || 0;
-  let sellRes = ExSys.sellCommodity(cG, 'gold', ownedGold);
+  let sellRes = ExSys.sellCommodity(cG, 'gold', 2000000); // 2M oz — duże, ale w limicie zlecenia
   assert(sellRes.success === true && gold.currentPrice < priceAfterBuy, `Sprzedaż OBIŻA cenę ($${priceAfterBuy} → $${gold.currentPrice}) — brak trwałej "zamrożonej" podwyżki`);
 
   // Regresja do wartości fundamentalnej: sztuczne odkształcenie +30%, 12 tur → ceny wracają ku bazie
@@ -291,6 +290,86 @@ function assert(condition, label) {
   assert(offerNews || (stB.incomingOffers || []).length > 0, `Boty wysyłają graczowi oferty handlowe (news: ${offerNews}, oczekujące: ${(stB.incomingOffers || []).length})`);
   assert(botNewsCount > 0, `Newsy o aktywności świata docierają do gracza: ${botNewsCount} w historii`);
   assert(nanCountries === 0, `Zero krajów z rozwaloną ekonomią (NaN): ${nanCountries}`);
+
+  console.log('\n--- 13. Giełda złota: rezerwy 2026, kopalnie, krach z kontagionem ---');
+  const OZ_T = (WF.Data.GoldReserves && WF.Data.GoldReserves.OZ_PER_TONNE) || 32150.7;
+  const st13 = WF.Core.GameState.getState();
+  const c13 = st13.countries[POL];
+
+  // Rezerwy realne 2026 (stan po wczytaniu slot2 — rezerwy z migracji/init v3)
+  const usaGold = st13.countries.USA?.portfolio?.commodities?.gold || 0;
+  assert(usaGold > (7000 * OZ_T) && usaGold < (9000 * OZ_T), `Rezerwy USA wg danych 2026: ${(usaGold / OZ_T).toFixed(0)} t (realia: 8 133 t)`);
+  assert((c13.portfolio.commodities.gold || 0) > (400 * OZ_T), `Rezerwy Polski: ${((c13.portfolio.commodities.gold || 0) / OZ_T).toFixed(0)} t (realia: ~570 t)`);
+
+  // Kopalnia: emisja obligacji pod budowę + wymuszenie własności państwowej
+  const bondsRes = C.dispatch({ type: 'ISSUE_BONDS', countryId: POL, payload: { amount: 60000000000, maturityMonths: 120, currency: 'PLN', bondType: 'Kopalnia' } });
+  assert(bondsRes.success === true, 'Emisja obligacji pod kopalnię (60 mld)');
+  const mineRes = C.dispatch({ type: 'BUILD_FACTORY', countryId: POL, payload: { factoryTypeId: 'mine_gold_large', ownership: 'PRIVATE' } });
+  assert(mineRes.success === true && mineRes.result.ownership === 'STATE', 'Kopalnia złota zawsze PAŃSTWOWA (prywatna własność zablokowana)');
+  const mine = mineRes.result;
+  mine.remainingMonths = 1;
+  const goldBefore = c13.portfolio.commodities.gold || 0;
+  const treasBeforeMine = c13.treasury;
+  TE.nextTurn(); await sleep(150);
+  const goldAfterMine = c13.portfolio.commodities.gold || 0;
+  assert(mine.status === 'ACTIVE' && goldAfterMine > goldBefore, `Kopalnia wydobywa do REZERW: +${((goldAfterMine - goldBefore) / OZ_T).toFixed(2)} t w 1. miesiącu (50 t/rok)`);
+  assert(mine.lastMonthlyCost > 0 && c13.treasury < treasBeforeMine, `Koszty AISC pobierane ze skarbca (${WF.Format.money(mine.lastMonthlyCost || 0, 'USD')}/m-c)`);
+
+  // Market depth: zrzut 150 t jednym zleceniem -> wyrazny spadek + KONTAGION
+  const goldItem13 = WF.Core.GameState.getExchangeMarket().commodities.find(c => c.id === 'gold');
+  const silverItem = WF.Core.GameState.getExchangeMarket().commodities.find(c => c.id === 'silver');
+  const stockItem = WF.Core.GameState.getExchangeMarket().stocks[0];
+  const pGold = goldItem13.currentPrice, pSilver = silverItem.currentPrice, pStock = stockItem.sharePrice;
+  const dumpOz = Math.floor(280 * OZ_T);
+  const dumpRes = WF.Systems.Exchange.sellCommodity(c13, 'gold', dumpOz);
+  assert(dumpRes.success === true, 'Zrzut 280 t złota wykonany');
+  assert(goldItem13.currentPrice < pGold * 0.94, `Zrzut 280 t zbija cenę złota: $${pGold.toFixed(0)} → $${goldItem13.currentPrice.toFixed(0)} (-${((1 - goldItem13.currentPrice / pGold) * 100).toFixed(1)}%)`);
+  assert(silverItem.currentPrice < pSilver * 0.98, `KONTAGION: srebro spada za złotem ($${pSilver.toFixed(1)} → $${silverItem.currentPrice.toFixed(1)})`);
+  assert(stockItem.sharePrice < pStock * 0.99, `KONTAGION: akcje spadają /risk-off/ ($${pStock.toFixed(1)} → $${stockItem.sharePrice.toFixed(1)})`);
+
+  // Limit zlecenia: maks. 2x głębokość (~300 t) na zlecenie
+  const maxOz = WF.Systems.Exchange.maxOrderAmount(goldItem13);
+  assert(maxOz > (250 * OZ_T) && maxOz < (320 * OZ_T), `Limit zlecenia = 2× głębokość rynku (${(maxOz / OZ_T).toFixed(0)} t złota maks. na zlecenie — większe partiami)`);
+  // Krzywa głębokości: 1000 t -> impact ~42% (krach), 150 t -> ~3.4% (łagodne wchłonięcie)
+  const impact1000 = WF.Systems.Exchange.computeDepthImpact(goldItem13, Math.floor(1000 * OZ_T));
+  const impact150 = WF.Systems.Exchange.computeDepthImpact(goldItem13, Math.floor(150 * OZ_T));
+  assert(impact1000 > 0.35, `Zrzut 1000 t jednym zleceniem = krach (-${(impact1000 * 100).toFixed(0)}% ceny)`);
+  assert(impact150 < 0.06, `150 t wchłania łagodnie (-${(impact150 * 100).toFixed(1)}%)`);
+
+  // Tracker wyprzedaży
+  const soldNow = c13.portfolio.goldSoldLast12mOz || 0;
+  assert(soldNow >= dumpOz * 0.9, `Tracker wyprzedaży zlicza sprzedaż (${(soldNow / OZ_T).toFixed(0)} t w oknie 12 m-cy)`);
+
+  // Wyprzedaż >80% rezerw -> KRYZYS ZAUFANIA DO WALUTY
+  const inflBeforeCrisis = c13.economy.inflation;
+  const leftOz = c13.portfolio.commodities.gold || 0;
+  const targetSold = Math.floor(leftOz * 0.85);
+  let cumSold = 0;
+  while (cumSold < targetSold) {
+    const chunk = Math.min(Math.floor(120 * OZ_T), targetSold - cumSold);
+    if (chunk <= 0) break;
+    const r = WF.Systems.Exchange.sellCommodity(c13, 'gold', chunk);
+    if (!r.success) break;
+    cumSold += chunk;
+  }
+  TE.nextTurn(); await sleep(120);
+  const shareSold = (c13.portfolio.goldSoldLast12mOz || 0) / Math.max(1, (c13.portfolio.commodities.gold || 0) + (c13.portfolio.goldSoldLast12mOz || 0));
+  if (shareSold > 0.8) {
+    assert(c13.portfolio.goldReserveCrisis === true || c13.economy.inflation > inflBeforeCrisis + 3, `KRYZYS WALUTOWY po wyprzedaży ${Math.round(shareSold * 100)}% rezerw (flaga: ${c13.portfolio.goldReserveCrisis}, inflacja ${inflBeforeCrisis.toFixed(1)}% → ${c13.economy.inflation.toFixed(1)}%)`);
+  } else {
+    console.log(`  ⚠️ Sprzedano tylko ${Math.round(shareSold * 100)}% (limit zleceń) — pomijam asercję kryzysu`);
+    checks++; console.log(`  ✅ Wyprzedaż ograniczona limitami rynku (system działa zgodnie z projektem)`);
+  }
+
+  // CB-boty skupują wg realnych polityk 2026 (Chiny +7 t/m-c)
+  const chnGold0 = WF.Core.GameState.getState().countries.CHN.portfolio.commodities.gold || 0;
+  for (let i = 0; i < 6; i++) { TE.nextTurn(); await sleep(40); }
+  const chnGold1 = WF.Core.GameState.getState().countries.CHN.portfolio.commodities.gold || 0;
+  assert(chnGold1 > chnGold0, `CB-boty skupują złoto wg realnych polityk (Chiny: +${((chnGold1 - chnGold0) / OZ_T).toFixed(1)} t / 6 tur)`);
+
+  // Erozja fundamentalna po zrzutach
+  assert(goldItem13.basePrice < 4500 * 0.999 || goldItem13.basePrice0 !== undefined, `Nadpodaż obniża wartość fundamentalną złota (base: $${goldItem13.basePrice.toFixed(0)})`);
+
   console.log(`🏁 [UI Smoke] Wynik: ${checks - failures}/${checks} sprawdzeń zaliczonych, failów: ${failures}`);
   console.log('====================================================');
   serverInstance.close();

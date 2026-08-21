@@ -72,9 +72,27 @@
           // (e) Energy Security & Stability Bottlenecks
           const blackoutPenalty = (country.energy?.blackoutRisk > 5) ? -0.4 : 0.0;
 
+          // (f) GOLD RESERVE CONFIDENCE — duże rezerwy złota przyciągają kapitał
+          // i inwestycje ("firmy przyjeżdżają"): >5% PKB w złocie +0.15pp wzrostu,
+          // >10% PKB +0.30pp; bezpieczna waluta = tańsze finansowanie.
+          let goldConfidenceBoost = 0.0;
+          if (country.portfolio?.commodities?.gold > 0) {
+            const goldValueOz = country.portfolio.commodities.gold;
+            const gm = window.WorldForge.Core.GameState.getExchangeMarket();
+            const goldPriceItem = gm.commodities.find(c => c.id === 'gold');
+            const goldValue = goldValueOz * (goldPriceItem ? goldPriceItem.currentPrice : 4500);
+            const goldRatio = goldValue / Math.max(1, eco.gdpNominal);
+            if (goldRatio > 0.10) goldConfidenceBoost = 0.30;
+            else if (goldRatio > 0.05) goldConfidenceBoost = 0.15;
+            else if (goldRatio > 0.02) goldConfidenceBoost = 0.05;
+            if (goldRatio > 0.08 && debt.riskPremium > 0.3) {
+              debt.riskPremium = Math.max(0.3, debt.riskPremium - 0.005); // tańszy dług
+            }
+          }
+
           // Sum annual growth rate (%)
           const randomDrift = R.gaussian(0, 0.05);
-          let netAnnualGrowthRate = basePotentialGrowth + consumptionImpact + investmentImpact + govFiscalImpact + tradeImpact + blackoutPenalty + randomDrift;
+          let netAnnualGrowthRate = basePotentialGrowth + consumptionImpact + investmentImpact + govFiscalImpact + tradeImpact + blackoutPenalty + goldConfidenceBoost + randomDrift;
           netAnnualGrowthRate = V.sanitizeNumber(netAnnualGrowthRate, 2.5, -12.0, 18.0);
 
           // 2. Compounding Monthly Rate Formula: (1 + r)^(1/12) - 1
@@ -89,6 +107,38 @@
           newGdpReal = Math.max(minAllowedGdp, Math.min(maxAllowedGdp, newGdpReal));
 
           eco.gdpReal = Math.round(newGdpReal);
+
+          // 3b. RESERVE CRISIS — skutki wyprzedaży rezerw złota (okno 12 m-cy).
+          // Rezerwy podpierają walutę: ich sprzedaż osłabia kurs, podnosi inflację
+          // i wiarygodność; wyprzedaż >80% = kryzys zaufania do waluty.
+          let reserveCrisisPressure = 0.0;
+          if (country.portfolio?.commodities && (country.portfolio.goldSoldLast12mOz || 0) > 0) {
+            const goldOzNow = country.portfolio.commodities.gold || 0;
+            const soldOz = country.portfolio.goldSoldLast12mOz;
+            const soldShare = soldOz / Math.max(1, goldOzNow + soldOz);
+
+            if (soldShare > 0.20) {
+              const fxDrag = soldShare > 0.50 ? 0.010 : 0.003; // osłabienie kursu miesięcznie
+              eco.currencyExchangeRate = Math.round(((eco.currencyExchangeRate || 1) * (1 + fxDrag)) * 10000) / 10000;
+              reserveCrisisPressure = soldShare > 0.50 ? 0.50 : 0.15;
+            }
+
+            if (soldShare > 0.80 && !country.portfolio.goldReserveCrisis) {
+              country.portfolio.goldReserveCrisis = true;
+              eco.inflation += 8.0;          // szok inflacyjny
+              eco.politicalStability = Math.max(0, eco.politicalStability - 25);
+              eco.socialApproval = Math.max(0, eco.socialApproval - 15);
+              if (countryId === state.playerCountryId) {
+                window.WorldForge.Core.GameState.addNotification(
+                  'danger',
+                  '🔴 KRYZYS ZAUFANIA DO WALUTY',
+                  `Państwo wyprzedało ${Math.round(soldShare * 100)}% rezerw złota w ciągu 12 miesięcy! Kurs waluty załamał się, inflacja skoczyła o 8 pp, stabilność polityczna i poparcie spadają. Inwestorzy uciekają z Twojego obligacji i złotego — rezerwy były jego fundamentem.`,
+                  countryId
+                );
+              }
+            }
+            if (soldShare < 0.40) country.portfolio.goldReserveCrisis = false; // odbudowa zaufania
+          }
 
           // 4. Inflation Adjustment — kotwica inflacyjna indywidualna dla każdego państwa
           // (kraje rozwijające się i niestabilne utrzymują wyższą inflację strukturalną,
@@ -106,7 +156,8 @@
 
           const newInflation = eco.inflation
             + (inflationAnchor + outputGap + fiscalPressure - interestDampening - eco.inflation) * 0.10
-            + R.gaussian(0, 0.08);
+            + R.gaussian(0, 0.08)
+            + reserveCrisisPressure;
           eco.inflation = V.sanitizeNumber(newInflation, 3.0, -1.0, 85.0);
 
           // Nominal GDP is Real GDP adjusted for inflation index

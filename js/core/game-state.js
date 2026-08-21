@@ -57,6 +57,7 @@
         eventHistory: [],
         turnReports: [],
         notifications: [],
+        goldReservesV3: true, // rezerwy złota 2026 zainicjalizowane w generateInitialPortfolio
         debug: !!options.debug
       };
 
@@ -283,6 +284,9 @@
           // Production, Stockpiles & Commodities
           production: this.generateInitialProduction(id, cData, pop, gdpNominal),
 
+          // Sovereign Portfolio (rezerwy złota = realne dane 2026)
+          portfolio: this.generateInitialPortfolio(id, gdpNominal),
+
           // Infrastructure & Logistics
           infrastructure: {
             roadQuality: profile.infra?.roadQuality || 72,
@@ -477,6 +481,27 @@
           status: 'Zdrowy'
         };
       });
+    }
+
+    /**
+     * Portfel inwestycyjny państwa — startowe rezerwy złota wg REALNYCH danych 2026
+     * (np. USA 8 133 t, Niemcy 3 350 t, Polska 570 t; świat CB ~36 000 t).
+     */
+    generateInitialPortfolio(countryId, gdpNominal) {
+      const Gold = window.WorldForge.Data.GoldReserves;
+      let goldOz = 0;
+      if (Gold && typeof Gold.reservesOz === 'function') {
+        goldOz = Gold.reservesOz(countryId, gdpNominal);
+      }
+      return {
+        commodities: { gold: goldOz },
+        stocks: {},
+        totalInvested: 0,
+        monthlyDividends: 0,
+        // Tracker sprzedaży rezerw (do okien ostrzegawczych i kryzysu walutowego)
+        goldSoldLast12mOz: 0,
+        goldReserveCrisis: false
+      };
     }
 
     generateInitialProduction(countryId, cData, pop, gdpNominal) {

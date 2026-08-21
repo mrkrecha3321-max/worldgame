@@ -71,6 +71,10 @@
     processAllBots(state, turnNumber) {
       const playerCountryId = state.playerCountryId;
 
+      // Polityka złotowa banków centralnych (realne zachowania 2026):
+      // Polska skupuje do celu 700 t, Chiny/Turcja/Indie kupują, Rosja sprzedaje NWF.
+      this.processCentralBankGoldPolicies(state, turnNumber);
+
       // Lista mocarstw (top GDP) — cache co turę (tanie)
       const majors = this.computeMajorPowers(state);
 
@@ -96,6 +100,50 @@
 
       // Oferty handlowe dla gracza generuje osobny pas (raz na turę, po decyzjach botów)
       this.generatePlayerOffers(state, turnNumber, majors);
+    },
+
+    /**
+     * Operacje złotowe banków centralnych — płatne z REZERW WALUTOWYCH (nie skarbca),
+     * z realnym wpływem na cenę rynkową (wchodzą w głębokość rynku).
+     */
+    processCentralBankGoldPolicies(state, turnNumber) {
+      const Gold = window.WorldForge.Data.GoldReserves;
+      if (!Gold) return;
+      const Exchange = window.WorldForge.Systems.Exchange;
+      const market = Exchange.getMarket(state);
+      const goldItem = market.commodities.find(c => c.id === 'gold');
+      if (!goldItem) return;
+      const OZ = Gold.OZ_PER_TONNE;
+
+      for (const policy of Gold.cbPolicies) {
+        if (policy.id === state.playerCountryId) continue; // gracz decyduje sam
+        const country = state.countries[policy.id];
+        if (!country || !country.portfolio) continue;
+        if (!country.portfolio.commodities) country.portfolio.commodities = {};
+        const currentOz = country.portfolio.commodities.gold || 0;
+        const currentT = currentOz / OZ;
+
+        if (policy.action === 'BUY' && currentT < policy.targetTonnes) {
+          const buyT = Math.min(policy.monthlyTonnes, policy.targetTonnes - currentT);
+          const oz = Math.round(buyT * OZ);
+          const cost = Math.round(oz * goldItem.currentPrice * 1.002);
+          if ((country.centralBank?.foreignReserves || 0) > cost * 1.5) {
+            country.centralBank.foreignReserves -= cost;
+            country.portfolio.commodities.gold = currentOz + oz;
+            // Realny wpływ zakupu CB na rynek
+            const impact = Exchange.computeDepthImpact(goldItem, oz);
+            goldItem.currentPrice = Math.round(goldItem.currentPrice * (1 + impact) * 100) / 100;
+          }
+        } else if (policy.action === 'SELL' && currentT > policy.floorTonnes) {
+          const sellT = Math.min(policy.monthlyTonnes, currentT - policy.floorTonnes);
+          const oz = Math.round(sellT * OZ);
+          const impact = Exchange.computeDepthImpact(goldItem, oz);
+          const proceeds = Math.round(oz * goldItem.currentPrice * (1 - impact));
+          country.portfolio.commodities.gold = currentOz - oz;
+          country.centralBank.foreignReserves = (country.centralBank.foreignReserves || 0) + proceeds;
+          goldItem.currentPrice = Math.round(goldItem.currentPrice * (1 - impact) * 100) / 100;
+        }
+      }
     },
 
     computeMajorPowers(state) {
@@ -196,6 +244,22 @@
       // ── 4. PRZEMYSŁ: budowa i modernizacja fabryk ──────────────────
       const factoryTypes = window.WorldForge.Data.FactoryTypes || [];
       const factories = country.factories || [];
+
+      // 4a. Realni producenci złota rozbudowują kopalnie (skala wg realnej produkcji)
+      const goldProdT = (window.WorldForge.Data.GoldReserves?.annualMineProduction?.[country.id]) || 0;
+      const mineCap = Math.min(4, Math.max(1, Math.round(goldProdT / 80)));
+      const myMines = factories.filter(f => f.isMine).length;
+      if (
+        goldProdT >= 60 && myMines < mineCap &&
+        roll('mine') < 0.18 && turnNumber - mem.lastFactory >= 9
+      ) {
+        const mineTypeId = goldProdT >= 280 ? 'mine_gold_mega' : (goldProdT >= 90 ? 'mine_gold_large' : 'mine_gold_medium');
+        const mineMeta = factoryTypes.find(t => t.id === mineTypeId);
+        if (mineMeta && country.treasury > mineMeta.cost * 1.3) {
+          const res = dispatch('BUILD_FACTORY', { factoryTypeId: mineTypeId, ownership: 'STATE' });
+          if (res.success) mem.lastFactory = turnNumber;
+        }
+      }
       const factoryCap = Math.min(this.MAX_FACTORIES_BASE, Math.max(1, Math.round(eco.gdpNominal / 300000000000)));
       const buildProb = isMajor ? 0.30 : 0.10;
 

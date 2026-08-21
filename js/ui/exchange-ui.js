@@ -29,6 +29,8 @@
       const portfolio = country.portfolio || { commodities: {}, stocks: {}, monthlyDividends: 0 };
       const goldOz = portfolio.commodities?.gold || 0;
       const goldTons = (goldOz / 32150.7).toFixed(1);
+      const goldPriceNow = (exData.commodities.find(c => c.id === 'gold') || {}).currentPrice || 4500;
+      const goldCoveragePct = country.economy?.gdpNominal ? (goldOz * goldPriceNow / country.economy.gdpNominal) * 100 : null;
 
       // Compute total portfolio valuation
       let totalPortfolioVal = 0;
@@ -63,7 +65,7 @@
             <div class="grid-2" style="margin-top: 6px;">
               <div class="stat-pill" style="background: var(--bg-panel); padding: 5px 8px; border-radius: var(--border-radius-xs); border: 1px solid var(--border);">
                 <span class="stat-label">Rezerwy Złota w Skarbcu (Bank Centralny)</span>
-                <span class="stat-value text-accent font-mono">🥇 ${goldTons} ton (${F.number(goldOz, { rawText: true })} oz)</span>
+                <span class="stat-value text-accent font-mono">🥇 ${goldTons} ton (${F.number(goldOz, { rawText: true })} oz)${goldCoveragePct !== null ? ` • ${goldCoveragePct.toFixed(1)}% PKB ${goldCoveragePct >= 5 ? '💪' : (goldCoveragePct < 1 && goldOz > 0 ? '⚠' : '')}` : ''}</span>
               </div>
               <div class="stat-pill" style="background: var(--bg-panel); padding: 5px 8px; border-radius: var(--border-radius-xs); border: 1px solid var(--border);">
                 <span class="stat-label">Comiesięczne Dywidendy do Skarbu</span>
@@ -359,8 +361,11 @@
       const item = window.WorldForge.Core.GameState.getExchangeMarket().commodities.find(c => c.id === commId);
       if (!item) return;
       const F = window.WorldForge.Format;
-
-      const defaultAmount = (commId === 'gold') ? 100000 : 1000;
+      const Ex = window.WorldForge.Systems.Exchange;
+      const OZ = (window.WorldForge.Data.GoldReserves && window.WorldForge.Data.GoldReserves.OZ_PER_TONNE) || 32150.7;
+      const isGold = commId === 'gold';
+      const defaultAmount = isGold ? 100000 : 1000;
+      const maxOrder = Ex.maxOrderAmount(item);
 
       window.WorldForge.UI.Modal.show({
         title: `🥇 Zakup na Giełdzie: ${item.name}`,
@@ -369,9 +374,11 @@
             <div style="font-size: 11px; color: var(--text-secondary);">Aktualny kurs rynkowy: <strong class="font-mono text-positive">$${item.currentPrice.toLocaleString('pl-PL')}</strong> za 1 ${item.unit}</div>
             <div class="slider-group">
               <label style="font-size: 11px; font-weight: 500;">Ilość do zakupu (${item.unit}):</label>
-              <input type="number" id="ex-buy-amount" class="wf-input font-mono" value="${defaultAmount}" min="1" step="${commId === 'gold' ? 10000 : 100}" />
+              <input type="number" id="ex-buy-amount" class="wf-input font-mono" value="${defaultAmount}" min="1" step="${isGold ? 10000 : 100}" />
               <span style="font-size: 10px; color: var(--text-muted);">Środki w Skarbie: ${F.money(country.treasury, 'USD')}</span>
             </div>
+            <div id="ex-buy-preview" style="background: var(--bg-panel-secondary); border: 1px solid var(--border); border-radius: var(--border-radius-xs); padding: 8px 10px; font-size: 11px;"></div>
+            ${isGold ? `<div style="font-size: 10px; color: var(--text-muted);">Głębokość rynku: rynek wchłania ${F.number(Math.floor(maxOrder / 2), { rawText: true })} oz (~${Math.floor(maxOrder / 2 / OZ)} t) na zlecenie z minimalnym wpływem. Zakupy CB innych państw też ruszają ceną.</div>` : ''}
           </div>
         `,
         buttons: [
@@ -382,7 +389,7 @@
             autoClose: true,
             onClick: () => {
               const amount = parseFloat(document.getElementById('ex-buy-amount')?.value || defaultAmount);
-              const res = window.WorldForge.Systems.Exchange.buyCommodity(country, commId, amount);
+              const res = Ex.buyCommodity(country, commId, amount);
               if (!res.success) {
                 window.WorldForge.UI.Modal.showError('Transakcja Giełdowa Nieudana', res.reason);
               }
@@ -392,6 +399,24 @@
           }
         ]
       });
+
+      const input = document.getElementById('ex-buy-amount');
+      const preview = document.getElementById('ex-buy-preview');
+      const updatePreview = () => {
+        const amt = parseFloat(input?.value || 0) || 0;
+        const impact = Ex.computeDepthImpact(item, amt);
+        const execPrice = item.currentPrice * (1 + impact);
+        const total = Math.round(amt * execPrice);
+        if (preview) {
+          preview.innerHTML = `
+            <div style="display:flex; justify-content: space-between;"><span>Szacowana cena wykonania:</span><strong class="font-mono text-negative">$${execPrice.toFixed(2)} ${impact > 0.005 ? `(+${(impact * 100).toFixed(1)}% wpływ)` : '(rynkowa)'}</strong></div>
+            <div style="display:flex; justify-content: space-between;"><span>Łączny koszt:</span><strong class="font-mono">${F.money(total, 'USD')}</strong></div>
+            ${amt > maxOrder ? `<div class="text-negative" style="margin-top:4px;">⚠ Przekroczono limit zlecenia (${F.number(maxOrder, { rawText: true })}) — rynek odrzuci.</div>` : ''}
+          `;
+        }
+      };
+      input?.addEventListener('input', updatePreview);
+      updatePreview();
     },
 
     showSellCommodityDialog(country, commId, container) {
@@ -399,15 +424,26 @@
       const owned = country.portfolio?.commodities?.[commId] || 0;
       if (!item || owned <= 0) return;
 
+      const F = window.WorldForge.Format;
+      const Ex = window.WorldForge.Systems.Exchange;
+      const OZ = (window.WorldForge.Data.GoldReserves && window.WorldForge.Data.GoldReserves.OZ_PER_TONNE) || 32150.7;
+      const isGold = commId === 'gold';
+      const maxOrder = Ex.maxOrderAmount(item);
+
       window.WorldForge.UI.Modal.show({
         title: `Sprzedaż: ${item.name}`,
         contentHtml: `
           <div style="display: flex; flex-direction: column; gap: 10px;">
-            <div style="font-size: 11px; color: var(--text-secondary);">Posiadasz: <strong class="font-mono text-accent">${window.WorldForge.Format.number(owned, { rawText: true })} ${item.unit}</strong></div>
+            <div style="font-size: 11px; color: var(--text-secondary);">
+              Posiadasz: <strong class="font-mono text-accent">${F.number(owned, { rawText: true })} ${item.unit}</strong>
+              ${isGold ? ` <span style="color: var(--text-muted);">(${(owned / OZ).toFixed(1)} t rezerw narodowych)</span>` : ''}
+            </div>
             <div class="slider-group">
               <label style="font-size: 11px; font-weight: 500;">Ilość do sprzedaży (${item.unit}):</label>
-              <input type="number" id="ex-sell-amount" class="wf-input font-mono" value="${owned}" min="1" max="${owned}" />
+              <input type="number" id="ex-sell-amount" class="wf-input font-mono" value="${Math.min(owned, maxOrder)}" min="1" max="${owned}" />
             </div>
+            <div id="ex-sell-preview" style="background: var(--bg-panel-secondary); border: 1px solid var(--border); border-radius: var(--border-radius-xs); padding: 8px 10px; font-size: 11px;"></div>
+            <div id="ex-sell-warning"></div>
           </div>
         `,
         buttons: [
@@ -418,7 +454,77 @@
             autoClose: true,
             onClick: () => {
               const amount = parseFloat(document.getElementById('ex-sell-amount')?.value || owned);
-              window.WorldForge.Systems.Exchange.sellCommodity(country, commId, amount);
+              // Ostrzeżenie o wyprzedaży rezerw narodowych (>5% rezerw złota)
+              if (isGold && amount > owned * 0.05) {
+                this.confirmGoldReserveSale(country, item, amount, owned, OZ, container);
+              } else {
+                const res = Ex.sellCommodity(country, commId, amount);
+                if (!res.success) {
+                  window.WorldForge.UI.Modal.showError('Transakcja Giełdowa Nieudana', res.reason);
+                }
+                window.WorldForge.UI.Navigation.updateTopBar();
+                this.render(container);
+              }
+            }
+          }
+        ]
+      });
+
+      const input = document.getElementById('ex-sell-amount');
+      const preview = document.getElementById('ex-sell-preview');
+      const warnEl = document.getElementById('ex-sell-warning');
+      const updatePreview = () => {
+        const amt = parseFloat(input?.value || 0) || 0;
+        const impact = Ex.computeDepthImpact(item, amt);
+        const execPrice = item.currentPrice * (1 - impact);
+        const proceeds = Math.round(amt * execPrice);
+        if (preview) {
+          preview.innerHTML = `
+            <div style="display:flex; justify-content: space-between;"><span>Szacowana cena wykonania:</span><strong class="font-mono text-negative">$${execPrice.toFixed(2)} ${impact > 0.005 ? `(-${(impact * 100).toFixed(1)}% wpływ)` : '(rynkowa)'}</strong></div>
+            <div style="display:flex; justify-content: space-between;"><span>Wpływ do Skarbu:</span><strong class="font-mono text-positive">${F.money(proceeds, 'USD')}</strong></div>
+            ${amt > maxOrder ? `<div class="text-negative" style="margin-top:4px;">⚠ Limit zlecenia: ${F.number(maxOrder, { rawText: true })} — sprzedawaj partiami.</div>` : ''}
+          `;
+        }
+        if (warnEl && isGold && amt > owned * 0.05) {
+          const share = ((amt / owned) * 100).toFixed(0);
+          warnEl.innerHTML = `<div style="background: var(--warning-bg); border: 1px solid var(--warning-border); color: var(--warning); border-radius: var(--border-radius-xs); padding: 7px 9px; font-size: 10.5px; line-height: 1.45;">
+            ⚠ Sprzedajesz <strong>${share}% rezerw narodowych</strong>. Rezerwy podpierają kurs Twojej waluty i rating kredytowy — większa wyprzedaż (kumulatywnie >20%/12 m-cy) osłabi kurs i podniesie inflację, a >80% wywoła Kryzys Zaufania do Waluty.
+          </div>`;
+        } else if (warnEl) warnEl.innerHTML = '';
+      };
+      input?.addEventListener('input', updatePreview);
+      updatePreview();
+    },
+
+    /** Potwierdzenie sprzedaży znacznej części rezerw złota (drugi stopień ostrzeżenia). */
+    confirmGoldReserveSale(country, item, amount, owned, OZ, container) {
+      const F = window.WorldForge.Format;
+      const Ex = window.WorldForge.Systems.Exchange;
+      const impact = Ex.computeDepthImpact(item, amount);
+      const execPrice = item.currentPrice * (1 - impact);
+      const proceeds = Math.round(amount * execPrice);
+      const share = (amount / owned) * 100;
+
+      window.WorldForge.UI.Modal.show({
+        title: '⚠ Potwierdź Sprzedaż Rezerw Złota',
+        contentHtml: `
+          <div style="display:flex; flex-direction: column; gap: 8px; font-size: 11.5px; color: var(--text-secondary); line-height: 1.5;">
+            <p style="margin:0;">Zlecenie: <strong>${(amount / OZ).toFixed(1)} t</strong> (${F.number(amount, { rawText: true })} oz) — <strong class="text-warning">${share.toFixed(0)}% rezerw narodowych</strong>.</p>
+            <p style="margin:0;">Szacowana cena po Twoim zleceniu: <strong class="font-mono text-negative">$${execPrice.toFixed(0)}/oz</strong> (rynkowa: $${item.currentPrice.toFixed(0)}). Wpływ do skarbca: <strong class="font-mono">${F.money(proceeds, 'USD')}</strong>.</p>
+            <p style="margin:0; color: var(--warning);">Rezerwy złota podpierają kurs waluty, inflację i rating państwa. Kumulatywna wyprzedaż ponad 20% rocznie osłabi złotego, ponad 50% — mocno podbije inflację, a ponad 80% wywoła kryzys zaufania do waluty (do +8 pp inflacji, spadek stabilności).</p>
+          </div>
+        `,
+        buttons: [
+          { text: 'Anuluj', class: 'wf-btn-secondary', autoClose: true },
+          {
+            text: 'Rozumiem ryzyko — sprzedaj',
+            class: 'wf-btn-danger',
+            autoClose: true,
+            onClick: () => {
+              const res = Ex.sellCommodity(country, 'gold', amount);
+              if (!res.success) {
+                window.WorldForge.UI.Modal.showError('Transakcja Giełdowa Nieudana', res.reason);
+              }
               window.WorldForge.UI.Navigation.updateTopBar();
               this.render(container);
             }

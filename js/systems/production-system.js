@@ -44,12 +44,56 @@
                       'success',
                       'Oddanie Fabryki do Użytku!',
                       `Zakład przemysłowy "${fac.name}" (${fac.sector}) rozpoczął regularną produkcję! Zdolności wytwórcze wzrosły o +${fac.capacityBoost} jedn.` +
-                      (estProfit ? ` Szacowana dywidenda państwowa: ${window.WorldForge.Format.money(estProfit, 'USD')}/m-c.` : ' (zakład prywatny — brak dywidendy dla skarbu).'),
+                      (fac.isMine ? ` Wydobycie: ${fac.capacityBoost} t złota/rok do rezerw państwa.` : '') +
+                      (!fac.isMine && estProfit ? ` Szacowana dywidenda państwowa: ${window.WorldForge.Format.money(estProfit, 'USD')}/m-c.` : ' (zakład prywatny — brak dywidendy dla skarbu).'),
                       countryId
                     );
                   }
                 }
               }
+            }
+          }
+
+          // 1b. GOLD MINES: wydobycie do rezerw państwa (NIE na rynek!)
+          // Kluczowa zasada: wykopanie złota nie rusza cen rynkowych — skarbiec
+          // rośnie, dopiero SPRZEDAŻ na giełdzie uderza w cenę (market depth).
+          if (country.factories && country.factories.length > 0 && country.portfolio) {
+            if (!country.portfolio.commodities) country.portfolio.commodities = {};
+            const market = window.WorldForge.Core.GameState.getExchangeMarket();
+            const goldItem = market.commodities.find(c => c.id === 'gold');
+            const goldPrice = goldItem ? goldItem.currentPrice : 4500;
+            const OZ_PER_TONNE = (window.WorldForge.Data.GoldReserves && window.WorldForge.Data.GoldReserves.OZ_PER_TONNE) || 32150.7;
+
+            for (const fac of country.factories) {
+              if (!fac.isMine || fac.status !== 'ACTIVE') continue;
+
+              const utilization = ((country.businesses && country.businesses.capacityUtilization) || 78) / 100;
+              const monthlyTonnes = (fac.capacityBoost / 12) * utilization;
+              const monthlyOz = Math.round(monthlyTonnes * OZ_PER_TONNE);
+              const operatingCost = Math.round(monthlyOz * (fac.aiscPerOz || 1900));
+
+              // Brak gotówki na koszty wydobycia -> kopalnia przechodzi w tryb PAUSED
+              if (country.treasury < operatingCost) {
+                fac.status = 'PAUSED';
+                fac.lastMonthlyOz = 0;
+                fac.lastMonthlyProfit = 0;
+                if (countryId === state.playerCountryId) {
+                  window.WorldForge.Core.GameState.addNotification(
+                    'warning',
+                    'Kopalnia Złota Wstrzymana',
+                    `"${fac.name}" zaprzestała wydobycia — Skarb Państwa nie pokrywa kosztów operacyjnych (${window.WorldForge.Format.money(operatingCost, 'USD')}/m-c). Wznów w zakładce Gospodarka.`,
+                    countryId
+                  );
+                }
+                continue;
+              }
+
+              country.treasury -= operatingCost;
+              country.portfolio.commodities.gold = (country.portfolio.commodities.gold || 0) + monthlyOz;
+              const grossValue = Math.round(monthlyOz * goldPrice);
+              fac.lastMonthlyOz = monthlyOz;
+              fac.lastMonthlyProfit = grossValue - operatingCost;
+              fac.lastMonthlyCost = operatingCost;
             }
           }
 
@@ -61,8 +105,10 @@
           let stateDividends = 0;
           if (Array.isArray(country.factories)) {
             for (const fac of country.factories) {
-              if (fac.status !== 'ACTIVE') { fac.lastMonthlyProfit = 0; continue; }
+              if (fac.status !== 'ACTIVE') { fac.lastMonthlyProfit = fac.isMine ? 0 : fac.lastMonthlyProfit; fac.lastMonthlySurplus = 0; continue; }
               if (fac.ownership === 'PRIVATE') { fac.lastMonthlyProfit = null; continue; }
+              // Kopalnie złota mają własny model (wydobycie do rezerw, zysk = cena - AISC)
+              if (fac.isMine) { fac.lastMonthlySurplus = 0; continue; }
 
               const resMeta = resourcesList.find(r => r.id === fac.sector);
               const price = (state.globalMarket && state.globalMarket.prices[fac.sector]) || (resMeta ? resMeta.basePrice : 150);

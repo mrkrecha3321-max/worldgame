@@ -68,16 +68,24 @@
             <div style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto;">
               ${factories.length > 0 ? factories.map(fac => {
                 const isBuilding = (fac.status === 'BUILDING');
+                const isPaused = (fac.status === 'PAUSED');
                 return `
-                  <div style="background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--border-radius-xs); padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;">
+                  <div style="background: var(--bg-panel); border: 1px solid ${fac.isMine ? 'var(--warning-border)' : 'var(--border)'}; border-radius: var(--border-radius-xs); padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;">
                     <div>
                       <div style="font-weight: 600; font-size: 11px;">
-                        ${fac.name} ${fac.level > 1 ? `<span class="wf-badge wf-badge-cyan">Poz. ${fac.level}</span>` : ''}
+                        ${fac.name} ${fac.level > 1 ? `<span class="wf-badge wf-badge-cyan">Poz. ${fac.level}</span>` : ''} ${fac.isMine ? '<span class="wf-badge wf-badge-amber">KOPALNIA ZŁOTA</span>' : ''}
                       </div>
                       <div style="font-size: 10px; color: var(--text-muted);">
-                        Sektor: <strong class="text-accent">${fac.sector}</strong> • Zdolności: +${fac.capacityBoost} • Pracownicy: ${fac.workersEmployed} • ${fac.ownership === 'PRIVATE' ? '🏭 Prywatny' : '🏛️ Państwowy'}
+                        ${fac.isMine
+                          ? `Wydobycie: <strong class="text-accent">${fac.capacityBoost} t złota/rok</strong> • Koszt AISC: $${(fac.aiscPerOz || 1900).toLocaleString('pl-PL')}/oz • Pracownicy: ${fac.workersEmployed}`
+                          : `Sektor: <strong class="text-accent">${fac.sector}</strong> • Zdolności: +${fac.capacityBoost} • Pracownicy: ${fac.workersEmployed} • ${fac.ownership === 'PRIVATE' ? '🏭 Prywatny' : '🏛️ Państwowy'}`}
                       </div>
-                      ${!isBuilding && fac.ownership !== 'PRIVATE' && fac.lastMonthlyProfit > 0 ? `
+                      ${fac.isMine && !isBuilding && !isPaused && fac.lastMonthlyOz > 0 ? `
+                        <div style="font-size: 10px; color: var(--positive); margin-top: 2px;">
+                          ⛏️ Wydobycie: <strong class="font-mono">${(fac.lastMonthlyOz / 32150.7).toFixed(1)} t/m-c do rezerw</strong> • Wynik operacyjny: <strong class="font-mono ${fac.lastMonthlyProfit >= 0 ? 'text-positive' : 'text-negative'}">${F.money(fac.lastMonthlyProfit, 'USD')}/m-c</strong> (koszt: ${F.money(fac.lastMonthlyCost || 0, 'USD')})
+                        </div>
+                      ` : ''}
+                      ${!fac.isMine && !isBuilding && fac.ownership !== 'PRIVATE' && fac.lastMonthlyProfit > 0 ? `
                         <div style="font-size: 10px; color: var(--positive); margin-top: 2px;">
                           💰 Dywidenda: <strong class="font-mono">${F.money(fac.lastMonthlyProfit, 'USD')}/m-c</strong>
                           ${fac.lastMonthlySurplus ? `• 📦 Nadwyżka do magazynu: <strong class="font-mono">${fac.lastMonthlySurplus}</strong> jedn./m-c` : ''}
@@ -88,14 +96,23 @@
                           W budowie (pozostało ${fac.remainingMonths} m-cy)
                         </div>
                       ` : ''}
+                      ${isPaused ? `
+                        <div style="font-size: 10px; color: var(--negative); margin-top: 2px;">
+                          ⏸ Wydobycie wstrzymane
+                        </div>
+                      ` : ''}
                     </div>
-                    <div>
-                      ${!isBuilding ? (fac.level >= 5
-                        ? '<span class="wf-badge wf-badge-cyan" title="Osiągnięto maksymalny poziom">MAX</span>'
-                        : `
+                    <div style="display: flex; gap: 4px; flex-direction: column; align-items: flex-end;">
+                      ${!isBuilding && fac.isMine ? `
+                        <button class="wf-btn wf-btn-sm ${isPaused ? 'wf-btn-success' : 'wf-btn-secondary'} btn-toggle-mine" data-fac-id="${fac.id}">
+                          ${isPaused ? '▶ Wznów' : '⏸ Wstrzymaj'}
+                        </button>
+                      ` : ''}
+                      ${!isBuilding && fac.level < 5
+                        ? `
                         <button class="wf-btn wf-btn-sm wf-btn-secondary btn-upgrade-factory" data-fac-id="${fac.id}">
                           Modernizuj (${F.money(Math.round(300000000 * Math.pow(1.5, fac.level - 1)), 'USD')})
-                        </button>`) : ''}
+                        </button>` : (!isBuilding ? '<span class="wf-badge wf-badge-cyan" title="Osiągnięto maksymalny poziom">MAX</span>' : '')}
                     </div>
                   </div>
                 `;
@@ -156,6 +173,21 @@
           this.render(container);
         };
       });
+
+      // Pause / resume gold mine
+      container.querySelectorAll('.btn-toggle-mine').forEach(btn => {
+        btn.onclick = () => {
+          const res = window.WorldForge.Core.Commands.dispatch({
+            type: 'MINE_TOGGLE',
+            countryId,
+            payload: { mineId: btn.getAttribute('data-fac-id') }
+          });
+          if (!res.success) {
+            window.WorldForge.UI.Modal.showError('Operacja Niemożliwa', res.reason);
+          }
+          this.render(container);
+        };
+      });
     },
 
     showBuildFactoryModal() {
@@ -181,17 +213,29 @@
             const resMeta = (window.WorldForge.Data.Resources || []).find(r => r.id === ft.sector);
             const price = (window.WorldForge.Core.GameState.getState().globalMarket?.prices?.[ft.sector]) || (resMeta ? resMeta.basePrice : 150);
             const estProfit = Math.round(ft.capacityBoost * 0.785 * price * 1000 * 0.05);
+            const goldPrice = window.WorldForge.Core.GameState.getExchangeMarket().commodities.find(c => c.id === 'gold')?.currentPrice || 4500;
+            const mineAnnualOz = ft.isMine ? Math.round((ft.capacityBoost / 12) * 0.78 * 32150.7 * 12) : 0;
+            const mineAnnualProfit = ft.isMine ? Math.round(mineAnnualOz * (goldPrice - (ft.aiscPerOz || 1900))) : 0;
             return `
-            <div style="background: var(--bg-panel-secondary); border: 1px solid var(--border); border-radius: var(--border-radius-xs); padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="background: var(--bg-panel-secondary); border: 1px solid ${ft.isMine ? 'var(--warning-border)' : 'var(--border)'}; border-radius: var(--border-radius-xs); padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;">
               <div>
                 <strong style="font-size: 12px; color: var(--text-primary);">${ft.icon} ${ft.name}</strong>
                 <div style="font-size: 10px; color: var(--text-muted);">${ft.description}</div>
                 <div style="font-size: 10px; color: var(--text-secondary); margin-top: 2px;">
                   Koszt: <strong class="text-positive">${F.money(ft.cost, 'USD')}</strong> • Czas budowy: <strong>${ft.constructionMonths} m-cy</strong> • Miejsca pracy: <strong>${ft.workersNeeded}</strong>
                 </div>
+                ${ft.isMine ? `
+                <div style="font-size: 10px; color: var(--accent); margin-top: 2px;">
+                  ⛏️ Wydobycie: <strong>${ft.capacityBoost} t/rok</strong> (po modernizacjach do <strong>${Math.round(ft.capacityBoost * Math.pow(1.5, 4))} t/rok</strong>) • Zysk operacyjny @ $${goldPrice.toFixed(0)}: <strong class="font-mono">${F.money(mineAnnualProfit, 'USD')}/rok</strong> • zwrot: ~${Math.max(1, Math.ceil(ft.cost / Math.max(1, mineAnnualProfit)))} lat
+                </div>
+                <div style="font-size: 9.5px; color: var(--text-muted); margin-top: 1px;">
+                  Złoto trafia do REZERW PAŃSTWA (nie na rynek) — sprzedaż ruszy ceną dopiero na giełdzie.
+                </div>
+                ` : `
                 <div style="font-size: 10px; color: var(--accent); margin-top: 2px;">
                   💰 Szacowana dywidenda państwowa: <strong class="font-mono">${F.money(estProfit, 'USD')}/m-c</strong> (zwrot inwestycji: ~${Math.ceil(ft.cost / Math.max(1, estProfit))} m-cy od oddania)
                 </div>
+                `}
               </div>
               <button class="wf-btn wf-btn-sm wf-btn-primary btn-submit-build-factory" data-type-id="${ft.id}">
                 Wybuduj

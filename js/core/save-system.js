@@ -78,6 +78,19 @@
         window.WorldForge.Core.GameState.state = parsed.state;
         // Migracja starych zapisów: rynek giełdowy musi istnieć w stanie gry
         window.WorldForge.Core.GameState.ensureExchangeMarket();
+        // Migracja v3 (złoto 2026): brak realnych rezerw w portfelach -> zainicjuj
+        if (!parsed.state.goldReservesV3 && window.WorldForge.Data.GoldReserves) {
+          for (const c of Object.values(parsed.state.countries || {})) {
+            if (!c.portfolio) c.portfolio = { commodities: {}, stocks: {}, totalInvested: 0, monthlyDividends: 0 };
+            if (!c.portfolio.commodities) c.portfolio.commodities = {};
+            if (!c.portfolio.commodities.gold) {
+              c.portfolio.commodities.gold = window.WorldForge.Data.GoldReserves.reservesOz(c.id, c.economy?.gdpNominal);
+            }
+            if (c.portfolio.goldSoldLast12mOz === undefined) c.portfolio.goldSoldLast12mOz = 0;
+            if (c.portfolio.goldReserveCrisis === undefined) c.portfolio.goldReserveCrisis = false;
+          }
+          parsed.state.goldReservesV3 = true;
+        }
         window.WorldForge.Core.GameState.notifySubscribers('gameLoaded', parsed.state);
         return true;
       } catch (err) {

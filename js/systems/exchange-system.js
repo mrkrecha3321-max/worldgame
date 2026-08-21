@@ -24,6 +24,64 @@
     },
 
     /**
+     * Krzywa wpływu zlecenia na rynek (market depth).
+     * r = wielkość zlecenia / miesięczna głębokość rynku aktywa.
+     * impact ≈ 3.4% przy r=1 (150 t), ~8.6% przy r=2 (300 t, kontagion), ~18% przy r=3.3 (500 t), ~42% przy r=6.7 (zrzut 1000 t).
+     */
+    computeDepthImpact(item, amount) {
+      if (!item || !amount || amount <= 0) return 0;
+      const depth = item.marketDepthOz || Math.max(1, 2500000000 / (item.currentPrice || 100));
+      const r = amount / depth;
+      return Math.min(0.60, 0.025 * r + 0.009 * r * r);
+    },
+
+    maxOrderAmount(item) {
+      const depth = item.marketDepthOz || Math.max(1, 2500000000 / (item.currentPrice || 100));
+      return Math.floor(depth * 2.0); // maks. 2× głębokość na zlecenie — większe wolumeny partiami
+    },
+
+    /**
+     * Kontagion: duże przemieszczenia złota rozlewają się na skorelowane aktywa
+     * (srebro -0.8×, przemysł/miedź -0.25×, akcje -0.4×) — krach na zlocie
+     * pociąga cały rynek (risk-off / margin calls), tak jak w realu.
+     */
+    applyContagion(market, movedPct) {
+      const mag = Math.abs(movedPct);
+      if (mag < 0.05) return; // ruchy >5% rozlewają się na skorelowane aktywa
+
+      const hit = (id, factor) => {
+        const asset = market.commodities.find(a => a.id === id);
+        if (!asset) return;
+        const minP = (asset.basePrice || asset.currentPrice) * 0.3;
+        asset.currentPrice = Math.round(Math.max(minP, asset.currentPrice * (1 + movedPct * factor)) * 100) / 100;
+      };
+
+      hit('silver', 0.8);
+      hit('copper', 0.25);
+      hit('lithium', 0.2);
+      hit('crude_oil_brent', 0.15);
+      hit('wheat_cbot', 0.05);
+      hit('wafers_3nm', 0.1);
+      for (const stock of market.stocks) {
+        stock.sharePrice = Math.round(Math.max(0.5, stock.sharePrice * (1 + movedPct * 0.4)) * 100) / 100;
+      }
+    },
+
+    /**
+     * Trwała erozja wartości fundamentalnej po zrzucie ponad głębokość rynku:
+     * świat ma realnie więcej kruszcu -> kotwica cenowa obniża się na stałe
+     * (maks. do 50% pierwotnej wartości fundamentalnej).
+     */
+    erodeFundamental(item, amount) {
+      if (!item || !amount) return;
+      const depth = item.marketDepthOz || Math.max(1, 2500000000 / (item.currentPrice || 100));
+      const r = amount / depth;
+      if (r <= 1) return;
+      if (!item.basePrice0) item.basePrice0 = item.basePrice;
+      item.basePrice = Math.max(item.basePrice0 * 0.5, item.basePrice * (1 - 0.02 * (r - 1)));
+    },
+
+    /**
      * Buy Gold or Commodity on Exchange
      */
     buyCommodity(country, commodityId, amount) {
@@ -36,7 +94,16 @@
       const cleanAmount = V.clampNonNegative(amount);
       if (cleanAmount <= 0) return { success: false, reason: 'Ilość musi być większa od zera' };
 
-      const totalCost = Math.round(cleanAmount * item.currentPrice);
+      // Limit wolumenu: rynek nie wchłonie wszystkiego jednym zleceniem
+      const maxOrder = this.maxOrderAmount(item);
+      if (cleanAmount > maxOrder) {
+        return { success: false, reason: `Rynek nie wchłonie ${F.number(cleanAmount, { rawText: true })} ${item.unit} jednym zleceniem (maks. ${F.number(maxOrder, { rawText: true })}). Realizuj partiami.` };
+      }
+
+      // Cena wykonania z wpływem na rynek (duże zakupu podbijają cenę przeciwko Tobie)
+      const impact = this.computeDepthImpact(item, cleanAmount);
+      const execPrice = item.currentPrice * (1 + impact);
+      const totalCost = Math.round(cleanAmount * execPrice);
       if (country.treasury < totalCost) {
         return { success: false, reason: `Brak wystarczających środków w Skarbie Państwa (wymagane ${F.money(totalCost, 'USD')})` };
       }
@@ -48,9 +115,10 @@
       const currentQty = country.portfolio.commodities[commodityId] || 0;
       country.portfolio.commodities[commodityId] = currentQty + cleanAmount;
 
-      // Market Impact: Large purchases push market spot price up
-      const marketImpactRatio = Math.min(0.20, (totalCost / 5000000000) * 0.02);
-      item.currentPrice = Math.round(item.currentPrice * (1 + marketImpactRatio) * 100) / 100;
+      const movedPct = impact;
+      item.currentPrice = Math.round(execPrice * 100) / 100;
+      this.applyContagion(this.getMarket(window.WorldForge.Core.GameState.getState()), movedPct);
+      this.erodeFundamental(item, cleanAmount);
 
       // If Gold, apply sovereign rating boost
       if (commodityId === 'gold') {
@@ -88,13 +156,28 @@
       const cleanAmount = Math.min(owned, V.clampNonNegative(amount));
       if (cleanAmount <= 0) return { success: false, reason: 'Ilość musi być większa od zera' };
 
-      const totalProceeds = Math.round(cleanAmount * item.currentPrice);
+      // Limit wolumenu: rynek nie wchłonie wszystkiego jednym zleceniem
+      const maxOrder = this.maxOrderAmount(item);
+      if (cleanAmount > maxOrder) {
+        return { success: false, reason: `Rynek nie wchłonie ${F.number(cleanAmount, { rawText: true })} ${item.unit} jednym zleceniem (maks. ${F.number(maxOrder, { rawText: true })}). Sprzedawaj partiami albo w kontraktach.` };
+      }
+
+      const impact = this.computeDepthImpact(item, cleanAmount);
+      const execPrice = item.currentPrice * (1 - impact);
+      const totalProceeds = Math.round(cleanAmount * execPrice);
       country.treasury += totalProceeds;
       country.portfolio.commodities[commodityId] -= cleanAmount;
 
-      // Market Impact: Selling pushes price down
-      const marketImpactRatio = Math.min(0.20, (totalProceeds / 5000000000) * 0.02);
-      item.currentPrice = Math.max(item.basePrice * 0.3, Math.round(item.currentPrice * (1 - marketImpactRatio) * 100) / 100);
+      // Tracker wyprzedaży rezerw (okno 12 m-cy) — zasilanie modułu ostrzeżeń
+      if (commodityId === 'gold' && country.portfolio) {
+        country.portfolio.goldSoldLast12mOz = (country.portfolio.goldSoldLast12mOz || 0) + cleanAmount;
+      }
+
+      // Impact: sprzedaż zbija cenę; duże zrzuty rozleją się na cały rynek
+      const movedPct = -impact;
+      item.currentPrice = Math.max((item.basePrice0 || item.basePrice) * 0.25, Math.round(execPrice * 100) / 100);
+      this.applyContagion(this.getMarket(window.WorldForge.Core.GameState.getState()), movedPct);
+      this.erodeFundamental(item, cleanAmount);
 
       window.WorldForge.Core.GameState.addNotification(
         'info',
@@ -238,6 +321,35 @@
         if (totalMonthlyDividend > 0) {
           country.treasury += totalMonthlyDividend;
           country.portfolio.monthlyDividends = totalMonthlyDividend;
+        }
+      }
+      // 4. Rotacja okna 12-miesięcznego wyprzedaży rezerw (dla kryzysów walutowych)
+      for (const country of Object.values(state.countries)) {
+        if (country.portfolio?.goldSoldLast12mOz > 0) {
+          country.portfolio.goldSoldLast12mOz = Math.round(country.portfolio.goldSoldLast12mOz * (11 / 12));
+        }
+      }
+
+      // 5. Presja podaży górniczej: jeśli świat wydobywa więcej niż historyczne
+      // ~306 t/mies. (rekord 2025: 3 672 t/rok), nadwyżka trwale eroduje wartość
+      // fundamentalną złota — masowe kopalnie działają przeciw swoim właścicielom.
+      const goldItem = market.commodities.find(c => c.id === 'gold');
+      if (goldItem) {
+        let worldMonthlyTonnes = 0;
+        for (const country of Object.values(state.countries)) {
+          for (const fac of (country.factories || [])) {
+            if (fac.isMine && fac.status === 'ACTIVE') {
+              worldMonthlyTonnes += (fac.capacityBoost / 12) * 0.78;
+            }
+          }
+        }
+        const baseline = (window.WorldForge.Data.GoldReserves?.world?.monthlyProductionTonnes) || 306;
+        if (worldMonthlyTonnes > baseline && goldItem.basePrice0) {
+          const excessRatio = (worldMonthlyTonnes - baseline) / baseline;
+          goldItem.basePrice = Math.max(
+            goldItem.basePrice0 * 0.5,
+            goldItem.basePrice * (1 - Math.min(0.05, excessRatio * 0.012))
+          );
         }
       }
     }

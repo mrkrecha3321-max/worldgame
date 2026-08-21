@@ -128,6 +128,50 @@
       workersNeeded: 2000,
       inputsRequired: { energy: 120 },
       description: 'Elektroliza tlenku glinu wytwarzająca lekkie stopy dla lotnictwa i motoryzacji.'
+    },
+
+    // ═══════════ KOPALNIE ZŁOTA (produkcja trafia do rezerw państwa, NIE na rynek) ═══════════
+    {
+      id: 'mine_gold_medium',
+      name: 'Średnia Kopalnia Złota (Open-Pit)',
+      sector: 'gold_mining',
+      icon: '🪙',
+      cost: 8000000000, // 8 mld USD
+      constructionMonths: 10,
+      capacityBoost: 20, // ton rocznie (capacityBoost = t/rok dla kopalń)
+      workersNeeded: 2800,
+      inputsRequired: { energy: 40, machinery: 15 },
+      aiscPerOz: 1900, // koszt całkowity wydobycia uncji
+      description: 'Odkrywkowa kopalnia rudy złota ze flotacją. Wydobywa 20 t złota rocznie bezpośrednio do rezerw państwa.',
+      isMine: true
+    },
+    {
+      id: 'mine_gold_large',
+      name: 'Duża Kopalnia Złota (Muruntau-Scale)',
+      sector: 'gold_mining',
+      icon: '⛏️',
+      cost: 25000000000, // 25 mld USD
+      constructionMonths: 16,
+      capacityBoost: 50, // ton rocznie
+      workersNeeded: 8500,
+      inputsRequired: { energy: 90, machinery: 40 },
+      aiscPerOz: 1750,
+      description: 'Gigantyczny kompleks górniczy klasy uzbeckiego Muruntau. 50 t złota rocznie do skarbca państwa.',
+      isMine: true
+    },
+    {
+      id: 'mine_gold_mega',
+      name: 'Mega-Dystrykt Górniczy (Nevada-Scale)',
+      sector: 'gold_mining',
+      icon: '🏔️',
+      cost: 50000000000, // 50 mld USD — najdroższa inwestycja w grze
+      constructionMonths: 24,
+      capacityBoost: 100, // ton rocznie; po 4 modernizacjach (x1.5) ~506 t/rok
+      workersNeeded: 22000,
+      inputsRequired: { energy: 200, machinery: 90, steel: 60 },
+      aiscPerOz: 1600,
+      description: 'Konglomerat kopalń klasy Nevada Gold Mines (93 t/rok w realu). Po pełnych modernizacjach do ~500 t złota rocznie.',
+      isMine: true
     }
   ];
 })();
